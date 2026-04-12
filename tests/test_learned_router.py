@@ -290,6 +290,8 @@ class TestLearnedRoute:
 
     def test_respects_tier_order(self):
         # Both tiers are good — should pick cheapest (low before medium)
+        # Seed RNG so Thompson sampling is deterministic
+        random.seed(42)
         stats = self._stats_with_data("email", {
             "low": (10, 0),    # ~perfect
             "medium": (10, 0), # ~perfect
