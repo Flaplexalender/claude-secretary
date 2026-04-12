@@ -666,7 +666,7 @@ async def _retry_with_failure_context(
             force_tier=tier,
             tools=tools,
             max_turns=max_turns,
-            max_tool_calls=60,
+            max_tool_calls=120,
         )
         if retry_result.error:
             _log.warning("Retry agent returned error: %s", retry_result.error)
@@ -681,9 +681,7 @@ async def _retry_with_failure_context(
     except Exception as e:
         _log.warning("Retry failed: %s", e)
         HealthLog().record("pipeline_error", "warning", f"Sandbox retry failed: {e}", source="self_improve._retry_in_sandbox")
-        return None
-def _filter_allowed_changes(changes: list[str]) -> list[str]:
-    """Filter changes to allowed directories.
+        return Noneallowed directories.
     
     Allowed: src/secretary/, tests/, goals.yaml, campaigns/, workspace/
     Blocked: data/, _tmp_*, .github/, setup files, pyproject.toml
@@ -704,6 +702,12 @@ def _filter_allowed_changes(changes: list[str]) -> list[str]:
         elif rel_posix.startswith(".github/"):
             rejected.append(change)
             _log.warning("Sandbox change blocked — .github/ is off-limits: %s", change)
+        elif rel_posix in ("pyproject.toml", "setup.py", "setup.cfg"):
+            rejected.append(change)
+            _log.warning("Sandbox change blocked — build config off-limits: %s", change)
+        elif any(rel_posix.startswith(p) for p in _ALLOWED_PREFIXES):
+            allowed.append(change)
+        elif rel_posix in _ALLOWED_FILES.github/ is off-limits: %s", change)
         elif rel_posix in ("pyproject.toml", "setup.py", "setup.cfg"):
             rejected.append(change)
             _log.warning("Sandbox change blocked — build config off-limits: %s", change)
@@ -740,13 +744,12 @@ Your plan must include:
 5. An AFTER snippet (the replacement code)
 
 Rules:
-- Pick ONE small, testable change. Not multiple changes.
 - The BEFORE snippet must be an EXACT copy from the file (the agent uses exact string matching).
 - The AFTER snippet must be valid Python that passes tests.
-- Only suggest changes to src/secretary/ source files.
-- Do NOT suggest changes to data files, config files, or the project root.
-- You MAY suggest adding new test functions in tests/ to cover your change,
-  but do NOT weaken or remove existing test assertions.
+- You may suggest changes to src/secretary/ and tests/ files.
+- Do NOT suggest changes to data files, .github/, or build config (pyproject.toml).
+- You MAY create new test files or modify existing ones in tests/.
+- Do NOT weaken or remove existing test assertions.
 - Prefer improvements that add resilience: error handling, input validation, \
 better logging, edge case fixes.
 - IMPORTANT: If test files are shown below, study them to understand what the \
@@ -1108,7 +1111,7 @@ async def improve(
         # 1. Copy to sandbox
         _copy_to_sandbox(project, sandbox)
         _log.info("Sandbox created: %s", sandbox)
-
+None,  # Allow writes to src/, tests/, configs
         # 2. Run agent in sandbox via direct_agent.run()
         _tools = build_tool_registry(
             config.data_path,
@@ -1132,15 +1135,18 @@ async def improve(
             _target_section = (
                 f"TARGET FILES (you MUST modify at least one of these):\n{_tf_list}\n"
                 f"Read these files FIRST, then make a focused change.\n"
-                f"Do NOT modify files outside this list unless absolutely necessary.\n\n"
-            )
-
-        _si_max_turns = max_turns or 8
-
-        _full_prompt = (
-            f"## MISSION: Complete the task and pass CI tests\n\n"
+                f"Do NOT mComplete the task and pass CI tests\n\n"
             f"SUCCESS = you made meaningful changes AND tests pass.\n"
             f"FAILURE = no changes made (reading/analyzing alone is NOT success).\n"
+            f"BUDGET = {_si_max_turns} turns. Use them wisely — read, plan, implement, verify.\n\n"
+            f"SCOPE (allowed):\n"
+            f"- src/secretary/ — main source code\n"
+            f"- tests/ — create or modify test files\n"
+            f"- goals.yaml, campaign.yaml — update goal status\n"
+            f"- workspace/ — memory and notes\n\n"
+            f"SCOPE (blocked — instant failure):\n"
+            f"- NEVER create _tmp_*, scratch files, or analysis dumps\n"
+            f"- NEVER write to data/, .github/, pyproject.tomlne is NOT success).\n"
             f"BUDGET = {_si_max_turns} turns. Use them wisely — read, plan, implement, verify.\n\n"
             f"SCOPE (allowed):\n"
             f"- src/secretary/ — main source code\n"
@@ -1168,11 +1174,13 @@ async def improve(
             _file_previews = ""
             if target_files:
                 for tf in target_files[:2]:
-                    _fp = sandbox / tf
-                    if _fp.exists() and _fp.is_file():
-                        try:
-                            _lines = _fp.read_text(encoding="utf-8", errors="replace").splitlines()
-                            _preview = "\n".join(_lines[:200])
+                    _fp = :\n"
+                f"1. Read relevant files to understand the codebase\n"
+                f"2. Implement changes — create new files with file_write, modify existing with file_edit\n"
+                f"3. For file_edit: copy EXACT lines from file_read output as old_string\n"
+                f"4. You may create BOTH source files and test files in one run\n"
+                f"5. When done editing, stop — CI will verify your changes automatically\n\n"
+                f"RULE: Make progress on EVERY turn. Don't just read — implement
                             _file_previews += f"\n### {tf} (first 200 lines)\n```python\n{_preview}\n```\n"
                         except Exception:
                             pass
@@ -1214,7 +1222,7 @@ async def improve(
             force_tier=_si_tier,
             tools=_tools,
             max_turns=_si_max_turns,
-            max_tool_calls=60,
+            max_tool_calls=120,
         )
         result.agent_result = agent_result.text
         result.cost_usd = agent_result.cost_usd
