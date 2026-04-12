@@ -636,6 +636,12 @@ def _cmd_status(config: SecretaryConfig) -> None:
         if fc["confidence"] != "none":
             from .currency import format_cost
             print(f"\n30-day forecast ({fc['confidence']} confidence): {format_cost(fc['projected_usd'])}  ({fc['projected_premium']:.1f}x premium)")
+
+        # Autonomous ratio
+        from .autonomous_ratio import autonomous_task_ratio, format_ratio_summary
+        ratio_stats = autonomous_task_ratio(config.data_path / "run_log.jsonl")
+        if ratio_stats["total"] > 0:
+            print(f"\n{format_ratio_summary(ratio_stats)}")
     else:
         print(f"\nRun history: no runs yet")
 
