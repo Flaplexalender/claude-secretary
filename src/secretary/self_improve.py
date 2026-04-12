@@ -1317,6 +1317,8 @@ async def improve(
                 result.promoted = False
                 result.error = f"Post-promote tests failed — auto-rolled back. Output: {real_output[:500]}"
             else:
+                # Re-promote: _run_tests_ci cleanup reverts working tree to master
+                _promote_changes(project, sandbox, result.changed_files)
                 # Git commit promoted changes for traceability
                 commit_hash = _git_commit_promoted(project, result.changed_files, task, description)
                 if commit_hash:
