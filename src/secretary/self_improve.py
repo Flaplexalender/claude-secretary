@@ -664,7 +664,7 @@ async def _retry_with_failure_context(
             force_tier=tier,
             tools=tools,
             max_turns=max_turns,
-            max_tool_calls=30,
+            max_tool_calls=60,
         )
         if retry_result.error:
             _log.warning("Retry agent returned error: %s", retry_result.error)
@@ -1203,7 +1203,7 @@ async def improve(
             force_tier=_si_tier,
             tools=_tools,
             max_turns=_si_max_turns,
-            max_tool_calls=30,
+            max_tool_calls=60,
         )
         result.agent_result = agent_result.text
         result.cost_usd = agent_result.cost_usd

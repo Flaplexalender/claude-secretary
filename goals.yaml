@@ -57,7 +57,8 @@ goals:
         depends_on: [event-bus, ooda-loop, goal-planner]
       - id: autonomous-ratio
         description: "Measure and optimize the ratio of autonomous vs static tasks"
-        status: not-started
+        status: done
+        evidence: "autonomous_ratio.py — 5-metric weighted score (tool coverage, test coverage, CI health, self-improve, error recovery), integrated into CLI status. 23 tests. Baseline: 48.7%"
         depends_on: [live-integration-test]
 
   - id: self-improvement
