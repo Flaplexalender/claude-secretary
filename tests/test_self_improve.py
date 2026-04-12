@@ -736,14 +736,15 @@ def test_filter_allowed_changes_keeps_src_secretary():
     assert filtered == changes
 
 
-def test_filter_allowed_changes_rejects_test_files():
+def test_filter_allowed_changes_allows_test_files():
+    """tests/ is now in allowed scope for long-horizon scaffolding."""
     changes = [
         "MOD: src/secretary/goals.py",
         "NEW: tests/test_new.py",
         "DEL: tests/test_agent.py",
     ]
     filtered = _filter_allowed_changes(changes)
-    assert filtered == ["MOD: src/secretary/goals.py"]
+    assert filtered == changes
 
 
 def test_filter_allowed_changes_rejects_data_files():
