@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Secretary Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script src="https://unpkg.com/htmx.org"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🤖 Claude Secretary Dashboard</h1>
+            <div class="header-controls">
+                <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+                <span id="last-update" class="last-update">Last updated: never</span>
+            </div>
+        </header>
+
+        <!-- Status Cards -->
+        <div class="card-grid">
+            <!-- Uptime Card -->
+            <div class="card card-uptime">
+                <div class="card-header">
+                    <h2>Uptime</h2>
+                    <span id="status-badge" class="status-badge status-unknown">Unknown</span>
+                </div>
+                <div class="card-content">
+                    <div class="metric">
+                        <span class="metric-label">Current Session</span>
+                        <span id="uptime-display" class="metric-value">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Pass Rate</span>
+                        <span id="pass-rate-display" class="metric-value">--</span>
+                    </div>
+                </div>
+                <button class="btn btn-sm" hx-get="/api/heartbeat" hx-target="this" hx-swap="outerHTML">
+                    Refresh Status
+                </button>
+            </div>
+
+            <!-- Metrics Card -->
+            <div class="card card-metrics">
+                <div class="card-header">
+                    <h2>Performance</h2>
+                </div>
+                <div class="card-content">
+                    <div class="metric">
+                        <span class="metric-label">Tasks Completed</span>
+                        <span id="task-count-display" class="metric-value">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Passed / Failed</span>
+                        <span id="pass-fail-display" class="metric-value">-- / --</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Cost (USD)</span>
+                        <span id="cost-display" class="metric-value">$--</span>
+                    </div>
+                </div>
+                <button class="btn btn-sm" hx-get="/api/metrics" hx-target="this" hx-swap="outerHTML">
+                    Refresh Metrics
+                </button>
+            </div>
+        </div>
+
+        <!-- Recent Tasks Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Recent Tasks</h2>
+                <div class="filter-controls">
+                    <button class="btn btn-sm" data-filter="">All</button>
+                    <button class="btn btn-sm" data-filter="pass">Passed</button>
+                    <button class="btn btn-sm" data-filter="fail">Failed</button>
+                </div>
+            </div>
+            <div id="tasks-container" class="tasks-list">
+                <p class="loading">Loading tasks...</p>
+            </div>
+        </div>
+
+        <!-- Log Viewer Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Live Log Viewer</h2>
+            </div>
+            <div id="log-container" class="log-viewer">
+                <p class="loading">Initializing log viewer...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

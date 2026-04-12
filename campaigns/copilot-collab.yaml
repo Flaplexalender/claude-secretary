@@ -1,0 +1,75 @@
+# Copilot Collaboration Campaign v2 — proxy-resilient
+#
+# Changes from v1:
+# - scan_core reads only dropbox + 1 source file (not all prior notes)
+# - Strict 40-line cap per cycle entry → prevents context growth
+# - 1800s timeout for scan_core (Opus can take 5min per response through proxy)
+# - Shorter focused prompts → smaller API payloads
+# - 30s retry backoff in config gives proxy recovery time
+#
+# Run: secretary watch --campaign campaigns/copilot-collab.yaml --interval 5 --max-runs 3
+
+name: copilot-collab
+description: Autonomous Opus 4.6 research with Copilot collaboration drop-box
+
+tasks:
+  - id: scan_core
+    priority: 1
+    tier: high
+    skip_if_recent: false
+    timeout: 1800
+    prompt: |
+      Autonomous research cycle with Opus 4.6.
+
+      1. Read workspace/collab/secretary-dropbox.md (check Copilot feedback)
+      2. Pick ONE unanalyzed file from this list:
+         A) src\secretary\direct_agent.py
+         B) src\secretary\watcher.py
+         C) src\secretary\memory.py
+         D) src\secretary\self_improve.py
+         E) src\secretary\direct_tools.py
+         F) src\secretary\run_log.py
+         To decide, read ONLY the last 30 lines of research\cycle-notes.md
+      3. Read ONLY the chosen file. Analyze: bugs, crashes, wasted tokens, autonomy gaps.
+      4. APPEND max 40 lines to cycle-notes.md with findings (## Cycle N heading).
+      5. WRITE the dropbox with top 3 priority actions for Copilot.
+
+      RULES: Keep all output concise. Max 40 lines per cycle entry. Do NOT re-read all prior notes.
+
+  - id: plan_improvement
+    priority: 2
+    depends_on: scan_core
+    tier: high
+    skip_if_recent: false
+    timeout: 600
+    prompt: |
+      Read the LAST 60 lines of research\cycle-notes.md.
+      Read research\implementation-log.md (if exists).
+
+      Pick the single highest-priority improvement NOT already in implementation-log.md.
+      Criteria: crash fix > autonomy > token waste > collaboration.
+
+      Write a concise plan (max 30 lines) to research\improvement-plan.md.
+      Include: what to change, which file, risk level (LOW/MEDIUM/HIGH), expected benefit.
+
+  - id: implement_safe
+    priority: 3
+    depends_on: plan_improvement
+    tier: high
+    skip_if_recent: false
+    timeout: 600
+    prompt: |
+      Read research\improvement-plan.md.
+      If risk is LOW and changes ≤2 files: implement it, then log to implementation-log.md.
+      If risk is MEDIUM or HIGH: write to the dropbox asking Copilot to implement instead.
+      Update workspace/collab/secretary-dropbox.md with status.
+             ### Risk: low
+             ### Tests: python -m pytest tests/ -q
+
+      STEP 4 — Update drop-box for Copilot:
+        Update workspace/collab/secretary-dropbox.md:
+          ## Latest Implementation
+          [what was just changed]
+          ## Copilot: Please verify
+          - Run: cd  && python -m pytest tests/ -q
+          - Check: [specific file and function to review]

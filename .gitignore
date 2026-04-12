@@ -1,0 +1,39 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# Runtime data — contains personal email analyses, calendar data, credentials,
+# memory stores, run logs, and other sensitive runtime artifacts.
+# Keep the directory structure but don't track contents.
+data/
+
+# Reports generated from personal email/calendar data
+docs/reports/email_analysis.md
+docs/reports/gmail_drafts_cleanup_report.txt
+docs/reports/UNREAD_MESSAGES_SUMMARY.md
+docs/reports/TOOL_BUDGET_ISSUE.md
+docs/reports/TOOL_BUDGET_LIMITATION.md
+
+# Personal campaigns (not generic enough for public repo)
+campaigns/shadow-pc-support.yaml
+
+# Local user profile (personal info — template version tracked in git)
+workspace/USER.md
+
+# Local-only prefix data (few-shot priming messages — not for public repo)
+src/secretary/_local_prefix.py
+
+# Test artifacts
+temp_*.txt
+test-output.txt
+test-out.txt
+pytest-*.txt
+test-order.txt
+test1799.txt

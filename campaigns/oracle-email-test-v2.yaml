@@ -1,0 +1,43 @@
+# Oracle Email/Calendar Test Campaign v2
+# Forces tool use — workers MUST call Gmail/Calendar APIs.
+# Success criteria: ≤6.0x premium, all tasks pass, tools > 0 per task.
+# Usage: secretary watch --instance oracle-email2 --campaign campaigns/oracle-email-test-v2.yaml --max-runs 1
+
+name: oracle-email-test-v2
+description: Oracle ensemble on Gmail + Calendar API tasks — tool use required
+
+tasks:
+  # Task 1: Must call gmail_search + gmail_read
+  - prompt: >
+      Use gmail_search with query "newer_than:7d" to find recent messages.
+      Then use gmail_read on the first 3 message IDs returned.
+      For each, report: sender, subject, date, and first 50 words of body.
+      You MUST call gmail_search and gmail_read — do not guess or summarize
+      without reading.
+    tier: oracle
+    id: email-read-detail
+    priority: 1
+    skip_if_recent: false
+
+  # Task 2: Must call calendar_today + calendar_list
+  - prompt: >
+      Call calendar_today to get the current date. Then call calendar_list
+      with a 7-day window (today through 7 days from now).
+      List every event with: date, time, title, duration.
+      You MUST call calendar_today and calendar_list — no guessing.
+    tier: oracle
+    id: calendar-week
+    priority: 2
+    skip_if_recent: false
+
+  # Task 3: Multi-step — gmail_search + gmail_read + reasoning
+  - prompt: >
+      Use gmail_search with query "newer_than:30d" to find recent messages.
+      Use gmail_read on up to 5 results. Categorize each message as:
+      personal, work, automated/notification, or newsletter.
+      Report a count per category and list the senders.
+      You MUST call the tools — do not fabricate results.
+    tier: oracle
+    id: email-categorize
+    priority: 3
+    skip_if_recent: false

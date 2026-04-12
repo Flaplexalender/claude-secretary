@@ -1,0 +1,108 @@
+# A/B Benchmark: Oracle Ensemble vs Sonnet Direct
+#
+# Runs identical tasks under both tiers so MetricsCollector can compare:
+#   - success rate
+#   - avg turns per task
+#   - premium cost per task
+#
+# Run with two instances in sequence (same tasks, different tiers):
+#
+#   secretary watch --instance ab-oracle --campaign campaigns/ab-oracle-vs-sonnet.yaml --max-runs 1
+#
+# Then compare run_log.jsonl entries for the two instances.
+# Filter: jq 'select(.task | contains("ab-"))' data/run_log.jsonl
+#
+# Interpretation:
+#   Oracle wins if: lower premium AND similar/better success rate
+#   Sonnet wins if: oracle fails more often despite lower premium
+#
+# IMPORTANT: all tasks use only file_tools (no Gmail/Calendar) so results
+# don't depend on live inbox state. Deterministic inputs = apples-to-apples.
+
+name: ab-oracle-vs-sonnet
+description: "A/B comparison: oracle ensemble vs Sonnet on identical file-analysis tasks"
+
+tasks:
+  # ── Group A: Simple read + report tasks (oracle should use wide interval) ──
+
+  - id: "ab-simple-01"
+    prompt: >
+      Read src/secretary/oracle.py.
+      Report the values of: FREE_MODELS, CHECKPOINT_MODEL, MAJORITY_THRESHOLD.
+      One line per constant.
+    tier: oracle
+    priority: 1
+    skip_if_recent: false
+
+  - id: "ab-simple-02"
+    prompt: >
+      Read src/secretary/oracle.py.
+      Report the values of: FREE_MODELS, CHECKPOINT_MODEL, MAJORITY_THRESHOLD.
+      One line per constant.
+    tier: medium
+    priority: 2
+    skip_if_recent: false
+
+  # ── Group B: Multi-file analysis (oracle should use tighter interval) ──
+
+  - id: "ab-complex-01"
+    prompt: >
+      Analyze src/secretary/config.py and src/secretary/router.py.
+      List all tiers defined in RoutingConfig (config.py).
+      For each tier, find the corresponding model name in router.py.
+      Report as a table: tier | model | premium_multiplier.
+      Identify any tiers without a router entry.
+    tier: oracle
+    priority: 3
+    skip_if_recent: false
+
+  - id: "ab-complex-02"
+    prompt: >
+      Analyze src/secretary/config.py and src/secretary/router.py.
+      List all tiers defined in RoutingConfig (config.py).
+      For each tier, find the corresponding model name in router.py.
+      Report as a table: tier | model | premium_multiplier.
+      Identify any tiers without a router entry.
+    tier: medium
+    priority: 4
+    skip_if_recent: false
+
+  # ── Group C: Code research (grep + multi-file, complex) ──
+
+  - id: "ab-research-01"
+    prompt: >
+      Investigate src/secretary/ to find all files that import 'asyncio'.
+      For each file, count how many async functions (def + async) it defines.
+      Sort by count descending. Report top 5 files with their async function count.
+    tier: oracle
+    priority: 5
+    skip_if_recent: false
+
+  - id: "ab-research-02"
+    prompt: >
+      Investigate src/secretary/ to find all files that import 'asyncio'.
+      For each file, count how many async functions (def + async) it defines.
+      Sort by count descending. Report top 5 files with their async function count.
+    tier: medium
+    priority: 6
+    skip_if_recent: false
+
+  # ── Group D: Summary writing (less tool-heavy, model quality dominates) ──
+
+  - id: "ab-write-01"
+    prompt: >
+      Read the module docstring of src/secretary/oracle.py (first 25 lines).
+      Write a concise 2-sentence description of what the oracle ensemble does,
+      suitable for a README section. Be factual.
+    tier: oracle
+    priority: 7
+    skip_if_recent: false
+
+  - id: "ab-write-02"
+    prompt: >
+      Read the module docstring of src/secretary/oracle.py (first 25 lines).
+      Write a concise 2-sentence description of what the oracle ensemble does,
+      suitable for a README section. Be factual.
+    tier: medium
+    priority: 8
+    skip_if_recent: false

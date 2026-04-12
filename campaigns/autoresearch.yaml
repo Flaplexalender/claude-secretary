@@ -1,0 +1,127 @@
+# Autoresearch Campaign — Self-improvement via UCB1 dimension selection
+#
+# Karpathy-style autoresearch loop adapted for Secretary:
+# 1. Read data/autoresearch_results.tsv to see all past experiments
+# 2. Compute UCB1 score for each dimension (under-explored = higher score)
+# 3. Propose one change in the highest-UCB1 dimension
+# 4. Apply the change, run eval 3x, compute median EVAL_SCORE
+# 5. If median > baseline: KEEP (git commit). If not: DISCARD (git checkout).
+# 6. Log result to TSV regardless.
+#
+# Dimensions: model_routing, checkpoint_timing, escalation, worker_config,
+#             prompt_hints, voting
+#
+# Run:
+#   secretary watch --campaign campaigns/autoresearch.yaml --max-runs 0
+#
+# Prerequisites:
+#   python scripts/establish_baseline.py   # creates initial TSV with baseline score
+#
+# The agent has full file access and can modify any source file.
+# Tests MUST pass after each change (eval is the gatekeeper, not pytest).
+
+name: autoresearch
+description: "Self-improvement loop: UCB1 dimension selection + eval-gated code changes"
+
+tasks:
+  - id: autoresearch_experiment
+    prompt: |
+      You are running ONE iteration of an autoresearch self-improvement loop.
+      Your goal: make a small, targeted change to improve Secretary's EVAL_SCORE.
+
+      ## Step 1: Read Experiment History
+      Read data/autoresearch_results.tsv to see all past experiments.
+      TSV columns: timestamp, commit, eval_score, median, status, dimension, description, run_scores
+
+      The BASELINE row has status=baseline. All subsequent rows are experiments.
+      Current baseline median is in the most recent "keep" row (or the baseline row if none kept).
+
+      ## Step 2: Select Dimension via UCB1
+      Dimensions and what they cover:
+        - model_routing: tier selection logic in router.py, model choices, always_opus, model routing
+        - checkpoint_timing: checkpoint_interval, dynamic_checkpoint_interval, max_checkpoints in oracle.py
+        - escalation: escalation_cooldown, agreement thresholds, consecutive stall detection in oracle.py
+        - worker_config: worker_timeout, parallel_workers, worker_models list in oracle.py
+        - prompt_hints: _ORACLE_TASK_HINTS dict, _build_oracle_system_prompt, checkpoint review prompt in oracle.py
+        - voting: MAJORITY_THRESHOLD, _majority_vote logic, soft_tool_calls fallback in oracle.py
+
+      For each dimension, compute:
+        n_total = total experiments (excluding baseline)
+        n_dim = experiments in this dimension
+        avg_score_dim = average eval_score for this dimension's experiments (use 0.5 if n_dim=0)
+        UCB1 = avg_score_dim + sqrt(2 * ln(n_total + 1) / (n_dim + 1))
+
+      Pick the dimension with the HIGHEST UCB1 score. If this is the first experiment (n_total=0),
+      pick "prompt_hints" (highest expected impact based on research).
+
+      ## Step 3: Propose ONE Change
+      Based on the selected dimension, propose a single, focused change. Examples:
+        - prompt_hints: modify one entry in _ORACLE_TASK_HINTS to be more specific
+        - checkpoint_timing: adjust checkpoint_interval from 6 to 5
+        - voting: change MAJORITY_THRESHOLD behavior for edge cases
+        - escalation: tune escalation_cooldown from 2 to 3
+        - worker_config: adjust worker_timeout
+        - model_routing: tune complexity scoring weights in router.py
+
+      Rules:
+        - Change only 1 file, at most 1-2 functions
+        - DO NOT change eval_tasks.json or run_eval.py (that's the eval harness, not the subject)
+        - DO NOT change config.yaml defaults (those are user settings)
+        - Make the change using file_edit
+
+      ## Step 4: Run Eval 3 Times
+      Run the eval script 3 times and collect EVAL_SCORE from each run:
+        run_python("
+      import subprocess, re
+      scores = []
+      for i in range(3):
+          r = subprocess.run(
+              ['python', 'scripts/run_eval.py', '--output-json', f'data/autoresearch_eval_{i}.json'],
+              capture_output=True, text=True, timeout=600, cwd=r'.',
+          )
+          m = re.search(r'EVAL_SCORE:\s+([\d.]+)', r.stdout)
+          scores.append(float(m.group(1)) if m else 0.0)
+          print(f'Run {i+1}: {scores[-1]:.3f}')
+      import statistics
+      med = statistics.median(scores)
+      print(f'Median: {med:.3f}')
+      print(f'Scores: {scores}')
+      ")
+
+      ## Step 5: Keep or Discard
+      Read the baseline median from data/autoresearch_results.tsv (most recent "keep" or "baseline" row).
+      - If median > baseline: STATUS = "keep"
+      - If median <= baseline: STATUS = "discard", and REVERT the change using file_edit
+
+      ## Step 6: Log to TSV
+      Append one row to data/autoresearch_results.tsv:
+        run_python("
+      from datetime import datetime, timezone
+      import subprocess
+      timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+      commit = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'],
+                              capture_output=True, text=True, cwd=r'.').stdout.strip()
+      # Fill in from your experiment:
+      eval_score = ...     # median score
+      median_val = ...     # same as eval_score
+      status = '...'       # 'keep' or 'discard'
+      dimension = '...'    # which dimension you changed
+      description = '...'  # one-line description of what you changed
+      run_scores = '...'   # comma-separated scores e.g. '0.72,0.75,0.73'
+      row = f'{timestamp}\t{commit}\t{eval_score:.3f}\t{median_val:.3f}\t{status}\t{dimension}\t{description}\t{run_scores}'
+      with open('data/autoresearch_results.tsv', 'a') as f:
+          f.write(row + '\n')
+      print(f'Logged: {status} {dimension} {eval_score:.3f}')
+      ")
+
+      ## Step 7: Report
+      Summarize: what dimension was selected (and why), what change was made,
+      the 3 eval scores, whether it was kept or discarded, and what the current
+      best median is.
+
+      IMPORTANT: Do NOT skip Step 4 (eval). The eval is the only objective measure.
+      IMPORTANT: Early abort — if the first eval run scores < baseline - 0.10, skip runs 2-3 and discard.
+    tier: high
+    priority: 1
+    skip_if_recent: false
+    timeout: 1800

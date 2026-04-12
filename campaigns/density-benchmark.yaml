@@ -1,0 +1,68 @@
+# Density Benchmark Campaign — Measure tools/turn after optimizations
+#
+# Changes being tested (2026-03-13):
+# 1. Few-shot prefix with multi-tool demonstration (5+3 tools in 2 turns)
+# 2. Simplified system prompt (2 lines vs 20)
+# 3. Reduced prefetch from 30KB to 10KB (forces more parallel reads)
+# 4. Low-density nudge when <3 tools per turn
+#
+# Previous baseline: 1.84 tools/turn, 6.9 turns/task
+# Target: 3+ tools/turn, 5 turns/task
+#
+# Launch 3 instances in parallel:
+#   secretary watch --instance density1 --campaign campaigns/density-benchmark.yaml --max-runs 1
+#   secretary watch --instance density2 --campaign campaigns/density-benchmark.yaml --max-runs 1
+#   secretary watch --instance density3 --campaign campaigns/density-benchmark.yaml --max-runs 1
+
+tasks:
+  # Task 1: Multi-file analysis (should trigger 5+ parallel reads)
+  - id: analyze_codebase
+    prompt: |
+      Analyze the Secretary codebase for efficiency improvements.
+      Read ALL of these files (call file_read for each in parallel):
+      - src/secretary/direct_agent.py
+      - src/secretary/direct_tools.py
+      - src/secretary/watcher.py
+      - src/secretary/config.py
+      - src/secretary/router.py
+
+      After reading, use grep_search to find:
+      - All function definitions in direct_agent.py
+      - All "TODO" comments across src/secretary/
+
+      Write a 5-bullet findings summary to data/scratchpad.md using file_write.
+    tier: high
+    priority: 1
+    timeout: 600
+
+  # Task 2: Search + edit workflow (should use grep_search → file_edit)
+  - id: search_and_fix
+    prompt: |
+      Find and fix documentation issues in the codebase.
+      1. Use grep_search on src/secretary/ to find functions without docstrings
+      2. Use grep_search to find any "HACK" or "FIXME" or "XXX" comments
+      3. Use file_list to check what's in the tests/ directory
+      4. Use run_command to run: python -m pytest tests/ -q --tb=no
+      5. Write results to data/scratchpad.md
+
+      Do ALL of steps 1-5 in your FIRST response.
+    tier: high
+    priority: 2
+    timeout: 600
+
+  # Task 3: End-to-end implementation task
+  - id: implement_feature
+    prompt: |
+      Add a simple health check endpoint to the Secretary.
+      
+      Steps:
+      1. Read src/secretary/watcher.py and src/secretary/config.py (parallel)
+      2. Use grep_search to find where heartbeat is written
+      3. Read the existing heartbeat code section
+      4. Create a new file data/health_status.json with: {"status": "ok", "timestamp": "now"}
+      5. Run tests to verify nothing broke: python -m pytest tests/ -q --tb=no
+
+      Call 5+ tools per response. Complete in 3-4 turns max.
+    tier: high
+    priority: 3
+    timeout: 600

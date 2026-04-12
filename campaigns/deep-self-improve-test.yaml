@@ -1,0 +1,48 @@
+# Deep Self-Improvement Test — Secretary improves its own codebase
+#
+# Tests the full loop: analyze → implement → test → verify
+# Uses deep tier (200 turns, 7200s timeout, 1×3 premium)
+#
+# Run:
+#   cd 
+#   .venv\Scripts\python.exe -m secretary watch --campaign campaigns/deep-self-improve-test.yaml --max-runs 1
+
+tasks:
+  - id: deep_self_improve
+    tier: deep
+    timeout: 900          # 15 min cap for the test
+    skip_if_recent: false
+    prompt: |
+      [DEEP SELF-IMPROVEMENT — you are improving YOUR OWN codebase]
+
+      You are the claude-secretary agent. Your source code is in src/secretary/.
+      Your tests are in tests/. You have full read/write access.
+
+      PHASE 1 — FIND A REAL IMPROVEMENT (use run_python for bulk analysis):
+      Use run_python to write a script that:
+      - Reads all .py files in src/secretary/
+      - Finds concrete, safe improvements (examples: dead imports, redundant code,
+        missing error handling, duplicate logic, inefficient patterns)
+      - Outputs a ranked list of improvements with file, line, and description
+
+      PHASE 2 — IMPLEMENT THE SAFEST IMPROVEMENT:
+      Pick the LOWEST-RISK improvement from Phase 1 (e.g. removing dead imports,
+      fixing a typo in a docstring, simplifying a conditional).
+      Use file_edit to make the change. Do NOT modify test files.
+
+      PHASE 3 — RUN TESTS:
+      Use run_command to execute: python -m pytest tests/ -x -q --tb=short
+      If tests fail, REVERT your change with file_edit immediately.
+
+      PHASE 4 — REPORT:
+      Write results to data/self-improve-report.md:
+      - What you found (list of potential improvements)
+      - What you changed (exact diff)
+      - Test results (pass/fail count)
+      - Whether the change was kept or reverted
+
+      RULES:
+      - Make only ONE change. Keep it small and safe.
+      - If unsure, pick a smaller change.
+      - Tests MUST pass after your change. If they don't, revert.
+      - Do NOT modify test files, config files, or campaign files.

@@ -1,0 +1,58 @@
+# Oracle Production Test Campaign
+# More diverse task types to validate oracle beyond simple file ops
+# Usage: secretary watch --instance oracle-prod --campaign campaigns/oracle-production-test.yaml --max-runs 1
+
+name: oracle-production-test
+description: Diverse task types to stress-test oracle voting + escalation
+
+tasks:
+  # Task 1: Multi-file analysis (requires reading + cross-referencing)
+  - prompt: >
+      Read src/secretary/config.py and src/secretary/router.py.
+      List every tier name defined in config and every model multiplier in router.
+      Do the tiers in config match the multipliers in router? Report any mismatches.
+    tier: oracle
+    id: cross-reference
+    priority: 1
+    skip_if_recent: false
+
+  # Task 2: Code search + synthesis (grep + reasoning)
+  - prompt: >
+      Find all Python files under src/secretary/ that define an async function.
+      For each file, count how many async functions it has. Return a sorted list
+      (most async functions first). Only list files with 3 or more.
+    tier: oracle
+    id: async-census
+    priority: 2
+    skip_if_recent: false
+
+  # Task 3: Multi-step deduction (read + compute)
+  - prompt: >
+      Read data/heartbeat.json and data/run_log.jsonl (last 5 entries).
+      Calculate: average task duration, total premium spent, and pass rate.
+      Report in a concise table.
+    tier: oracle
+    id: metrics-report
+    priority: 3
+    skip_if_recent: false
+
+  # Task 4: Writing task (minimal tools, mostly generation)
+  - prompt: >
+      Read the first 30 lines of src/secretary/oracle.py.
+      Write a one-paragraph summary (max 100 words) of what this module does,
+      suitable for a README.md section. Be factual and concise.
+    tier: oracle
+    id: write-summary
+    priority: 4
+    skip_if_recent: false
+
+  # Task 5: Complex search (ambiguous — workers may disagree on approach)
+  - prompt: >
+      Find all error handling patterns in the secretary codebase. Specifically,
+      search for try/except blocks in src/secretary/direct_agent.py and
+      src/secretary/watcher.py. List what exceptions are caught and whether
+      they log the error. Are there any bare 'except:' blocks?
+    tier: oracle
+    id: error-audit
+    priority: 5
+    skip_if_recent: false

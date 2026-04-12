@@ -1,0 +1,25 @@
+# Campaign: Email Triage
+# Quick email sorting and summarization — runs every 15-30 minutes.
+# Schedule: business hours on weekdays (8am-18pm).
+# Premium cost: ~1.0x per cycle (all low-tier tasks)
+
+tasks:
+  - prompt: >
+      Check my Gmail for unread messages from today using gmail_search with
+      query "is:unread newer_than:1d". For each message, provide a one-line
+      summary (sender, subject, urgency level: high/medium/low).
+      Skip newsletters, marketing, and automated notifications.
+    tier: low
+    schedule: "hours:8-18;weekdays"
+
+  - prompt: >
+      Check my Gmail drafts using gmail_search with query "in:drafts".
+      List any drafts that have been sitting for more than a day.
+      Remind me to either send or delete them.
+    tier: low
+
+  - prompt: >
+      Search Gmail for messages I need to reply to using gmail_search
+      with query "is:unread newer_than:3d".
+      Flag any that look like they need a response soon.
+    tier: low

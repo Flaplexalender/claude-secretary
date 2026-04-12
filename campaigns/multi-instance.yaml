@@ -1,0 +1,93 @@
+# Multi-Instance Parallel Campaign
+#
+# Run multiple Secretary instances with role-based task distribution.
+# Each instance specializes in a type of work, avoiding duplication
+# via the coordinator's claim protocol.
+#
+# Launch pattern (3 instances):
+#   secretary watch --instance triager --role triager --coordinate --campaign campaigns/multi-instance.yaml
+#   secretary watch --instance researcher --role researcher --coordinate --campaign campaigns/multi-instance.yaml
+#   secretary watch --instance builder --role builder --coordinate --campaign campaigns/multi-instance.yaml
+#
+# Or a generalist fallback that picks up orphaned tasks:
+#   secretary watch --instance fallback --coordinate --campaign campaigns/multi-instance.yaml
+#
+# Monitor:
+#   secretary metrics instances    — see active instances
+#   secretary metrics show         — per-instance efficiency
+#   secretary metrics benchmarks   — comparison history
+
+tasks:
+  # ── Triager tasks (fast, cheap, Haiku) ─────────────────
+  - id: email_triage
+    prompt: >
+      Check my Gmail for unread messages from today using gmail_search.
+      For each important message, provide a one-line summary (sender, subject, urgency).
+      Skip newsletters and automated notifications.
+    tier: low
+    role: triager
+    priority: 1
+
+  - id: calendar_check
+    prompt: >
+      Check my calendar for today's events using calendar_today.
+      If there are events in the next 2 hours, highlight them.
+      If there are conflicts or back-to-back meetings, flag them.
+    tier: low
+    role: triager
+    priority: 1
+
+  - id: draft_review
+    prompt: >
+      Check my Gmail drafts using gmail_search with query "in:drafts".
+      If there are drafts older than 3 days, list them so I can decide
+      whether to send or delete them.
+    tier: low
+    role: triager
+    priority: 2
+
+  # ── Researcher tasks (deep, Opus) ──────────────────────
+  - id: log_analysis
+    prompt: >
+      Read data/run_log.jsonl and analyze task patterns over the last 24 hours.
+      Look for: recurring failures, unusually slow tasks, tasks that could be
+      downgraded to a cheaper tier. Write findings to data/scratchpad.md.
+    tier: high
+    role: researcher
+    priority: 3
+    timeout: 1200
+
+  - id: efficiency_review
+    prompt: >
+      Read src/secretary/direct_agent.py and src/secretary/watcher.py.
+      Find 3 concrete optimizations that would reduce turns-per-task
+      or tokens-per-task. Write findings to data/scratchpad.md
+      (append, don't overwrite). Include code-level specifics.
+    tier: high
+    role: researcher
+    priority: 4
+    skip_if_recent: false
+    timeout: 2400
+
+  # ── Builder tasks (code changes, Opus) ─────────────────
+  - id: self_improve
+    prompt: >
+      Read data/scratchpad.md for researcher findings and improvement ideas.
+      Pick the highest-impact, lowest-risk item and implement it.
+      Run tests after any change: python -m pytest tests/ -q --tb=short
+      If tests fail, revert immediately. Update scratchpad with what you did.
+    tier: high
+    role: builder
+    depends_on: efficiency_review
+    priority: 5
+    skip_if_recent: false
+    timeout: 2400
+
+  # ── Shared tasks (any instance can take) ───────────────
+  - id: health_check
+    prompt: >
+      Quick health check: verify copilot-api proxy is responsive,
+      data directory is writable, and memory.json is not corrupted.
+      Report any issues found. If all clear, just say "Health: OK".
+    tier: low
+    priority: 0

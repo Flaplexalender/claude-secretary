@@ -1,0 +1,114 @@
+# Long-horizon research campaign — multi-cycle autonomous codebase analysis
+#
+# Secretary reads its own source code, builds cumulative knowledge across cycles,
+# and progressively plans + implements improvements for true long-horizon autonomy.
+#
+# Run with: secretary watch --campaign campaigns/long-horizon-research.yaml --interval 3 --max-runs 3
+# Uses: file_tools=true (set in config.yaml or --files flag)
+
+name: long-horizon-research
+description: Multi-cycle codebase analysis and autonomous self-improvement
+
+tasks:
+  - id: map_and_analyze
+    priority: 1
+    skip_if_recent: false
+    prompt: |
+      You are in a multi-cycle autonomous research loop. Each cycle you build on prior knowledge.
+      Your goal: understand the Secretary codebase deeply and accumulate findings across cycles.
+
+      STEP 1 — File exploration (use file_list and file_read tools):
+        List: src\secretary\
+        Read these files fully:
+          - src\secretary\direct_agent.py
+          - src\secretary\watcher.py
+          - src\secretary\memory.py
+          - src\secretary\direct_tools.py
+
+      STEP 2 — Check existing research (use file_read):
+        Read research\cycle-notes.md if it exists.
+        This shows what previous cycles found. Don't repeat already-noted items.
+
+      STEP 3 — Write NEW findings to file_write:
+        Append to research\cycle-notes.md
+        Format your entry as:
+          ## Cycle [N] — [date]
+          ### New findings
+          - [specific observation with file:line reference]
+          ### Concurrency / safety gaps
+          - [any shared state without locks]
+          ### Long-horizon autonomy gaps
+          - [what prevents 24/7 autonomous operation]
+          ### Already known (from memory)
+          - [list items already noted so they aren't repeated]
+
+      STEP 4 — Save summary to memory:
+        Key: "latest_research_cycle" — one paragraph summary of new findings.
+
+  - id: design_improvement
+    priority: 2
+    depends_on: [map_and_analyze]
+    skip_if_recent: false
+    prompt: |
+      You are continuing the multi-cycle autonomous improvement loop.
+
+      STEP 1 — Review accumulated knowledge:
+        Read research\cycle-notes.md
+        Read research\improvement-plan.md (if exists)
+        Check memory for "latest_research_cycle" and "improvement_priorities"
+
+      STEP 2 — Select the SINGLE best next improvement:
+        Criteria:
+          - Highest impact on long-horizon autonomous operation
+          - Lowest risk (≤2 files, no external API behavior change)
+          - Not yet implemented (check implementation-log.md)
+        Priority order:
+          1. Concurrency safety (threading.Lock for shared state in memory.py)
+          2. Self-monitoring / health metrics (is Secretary making progress?)
+          3. Dynamic task planning (let Secretary add its own tasks to the queue)
+          4. Context window efficiency (reduce wasted tokens per cycle)
+
+      STEP 3 — Write detailed implementation plan:
+        Write to research\improvement-plan.md
+        Include:
+          - Problem: what fails and why
+          - Solution: the exact code change (show full diff context)
+          - Files: which file(s), which function(s)
+          - Tests: what tests cover this, what new test to add
+          - Risk: what could go wrong
+        If a plan already exists and is still valid, refine it or mark it ready.
+
+      STEP 4 — Save to memory:
+        Key: "improvement_priorities" — ranked list of improvements + status of each.
+
+  - id: implement_or_prototype
+    priority: 3
+    depends_on: [design_improvement]
+    skip_if_recent: false
+    prompt: |
+      You are in the implementation phase of the autonomous improvement loop.
+
+      STEP 1 — Read the current plan:
+        Read research\improvement-plan.md
+        Read research\implementation-log.md (if exists)
+        Check which improvements have already been implemented.
+
+      STEP 2 — Decide: implement or prototype
+        If plan is CLEAR + LOW RISK (≤2 files, non-breaking):
+          IMPLEMENT:
+            1. Read the target file(s) using file_read
+            2. Apply the improvement using file_write (full file rewrite with change)
+            3. Append to research\implementation-log.md:
+               ## [improvement name] — [date]
+               ### Changed: [file:function]
+               ### What changed: [description]
+               ### Tests to run: python -m pytest tests/ -q
+            4. Save to memory key "recent_implementation": what you just changed
+
+        If plan is HIGH RISK or UNCLEAR:
+          PROTOTYPE:
+            Write code to research\prototype-[name].py
+            This is a standalone demonstration of the fix, not yet applied.
+            Append a "not yet applied" entry to implementation-log.md.
+
+      Either way: update memory key "improvement_priorities" with the new status.

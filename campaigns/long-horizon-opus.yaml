@@ -1,0 +1,62 @@
+# Long-Horizon Opus Autonomy — Deep multi-cycle self-improvement
+#
+# Designed for Opus 4.6 through proxy.
+# Each cycle: read scratchpad → decide what to work on → execute → checkpoint.
+# Cross-cycle continuity via data/scratchpad.md — agent picks up where it left off.
+#
+# Efficiency philosophy: fewer turns, more work per turn. System prompt enforces
+# batch tool calls and minimal back-and-forth. max_turns=30, flat 12K tokens.
+#
+# Usage:
+#   secretary watch --campaign campaigns/long-horizon-opus.yaml --interval 8 --max-runs 5
+
+tasks:
+  - id: deep_autonomous_work
+    tier: high
+    timeout: 2400  # 40 min — let Opus think deeply
+    skip_if_recent: false
+    prompt: |
+      You are an autonomous research-and-build agent running as part of a long-horizon campaign.
+      You have file tools to read and write any file. You are running in the claude-secretary project
+      at .
+
+      ## Continuation Protocol
+      1. FIRST: Read `data/scratchpad.md` — this is your cross-cycle memory.
+         It contains your previous findings, decisions, and what to do next.
+         If it doesn't exist, this is your first cycle — start fresh.
+      2. Work on the highest-priority item from the scratchpad (or pick one if first cycle).
+      3. LAST: Update `data/scratchpad.md` with:
+         - What you accomplished this cycle
+         - What to do next cycle
+         - Any blockers or decisions needed from Copilot/human
+         Keep it concise (under 80 lines).
+
+      ## Priority Queue (if no scratchpad exists)
+      Pick the highest-impact item you can safely implement:
+      1. Read src/secretary/*.py — find bugs, dead code, or optimization opportunities
+      2. Improve test coverage — read tests/, find untested paths, add tests
+      3. Improve error handling — find places where exceptions are swallowed silently
+      4. Optimize performance — find O(N) operations that could be O(1)
+      5. Improve documentation — add missing docstrings to public functions
+
+      ## Safety Rules
+      - Run `python -m pytest tests/ -q --tb=short` after ANY code change
+      - If tests fail, revert your change immediately
+      - Never modify config.yaml, campaigns/, or data/*.json
+      - Write findings to data/scratchpad.md, not to shared collab files
+      - If a change is HIGH risk (architecture, API contracts), describe it in scratchpad
+        and flag it for Copilot review instead of implementing
+
+  - id: checkpoint_and_report
+    tier: low
+    timeout: 120
+    depends_on: deep_autonomous_work
+    skip_if_recent: false
+    prompt: |
+      Read `data/scratchpad.md` and `data/run_log.jsonl` (last 5 entries).
+      Write a 3-line summary to `data/cycle-report.md` with:
+      - What was accomplished
+      - Tests status (pass/fail count)
+      - Next priority
+
+      Append to the file (don't overwrite previous reports).

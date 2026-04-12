@@ -1,0 +1,15 @@
+# Quick benchmark: error-audit only — testing category-aware hints
+# Previously this task burned 9.0x premium (3 Opus checkpoints)
+name: oracle-hint-test
+description: Test if category hints reduce error-audit from 9.0x
+
+tasks:
+  - prompt: >
+      Find all error handling patterns in the secretary codebase. Specifically,
+      search for try/except blocks in src/secretary/direct_agent.py and
+      src/secretary/watcher.py. List what exceptions are caught and whether
+      they log the error. Are there any bare 'except:' blocks?
+    tier: oracle
+    id: error-audit
+    priority: 1
+    skip_if_recent: false

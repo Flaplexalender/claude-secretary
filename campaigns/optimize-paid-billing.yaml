@@ -1,0 +1,209 @@
+# Paid-Billing Optimization Campaign
+#
+# Mission: Maximize work done per premium request when billing is ON.
+# Key insight: billing is per-REQUEST (not per-token). Each API call costs
+# a fixed multiplier (Opus=3x, Sonnet=1x, Haiku=0.33x) × $0.04.
+# Reducing turn COUNT is the #1 optimization target.
+#
+# Launch pattern:
+#   secretary watch --instance researcher --role researcher --coordinate --campaign campaigns/optimize-paid-billing.yaml --max-runs 1
+#   secretary watch --instance builder --role builder --coordinate --campaign campaigns/optimize-paid-billing.yaml --max-runs 1
+#   secretary watch --instance tester --role tester --coordinate --campaign campaigns/optimize-paid-billing.yaml --max-runs 1
+#
+# Monitor:
+#   secretary metrics instances
+#   secretary metrics show
+
+tasks:
+  # ── Researcher: find ways to reduce turn count ─────────────────────
+  - id: analyze_turn_patterns
+    prompt: |
+      [PAID-BILLING TURN REDUCTION RESEARCH]
+
+      Per-request billing: Opus=3× ($0.12), Sonnet=1× ($0.04), Haiku=0.33× ($0.013).
+      Token count doesn't matter — only the NUMBER of API calls matters.
+      Goal: reduce turns-per-task to the absolute minimum.
+
+      Read these files (batch all reads in turn 1):
+      - src/secretary/direct_agent.py (focus on the agent loop, _build_system_prompt, tool handling)
+      - src/secretary/watcher.py (focus on _run_task, context building)
+      - src/secretary/router.py (tier selection)
+      - src/secretary/config.py (OptimizationConfig)
+      - data/run_log.jsonl (last 100 lines — look at num_turns per task)
+
+      Analyze for TURN REDUCTION opportunities:
+      1. Can we batch more work into single turns? (e.g., pre-fill tool results)
+      2. Can we pre-load more context so the agent doesn't need extra reads?
+      3. Can we give clearer instructions so the agent doesn't do planning-only turns?
+      4. Can we use tool_choice=auto vs tool_choice=any strategically?
+      5. Are there tasks that could be 1-turn (tool_choice=any + immediate action)?
+      6. Can the system prompt better enforce "do everything in one shot"?
+      7. Could we add a "prefetch" phase that preloads all likely-needed context?
+      8. Is there value in caching conversation context across related tasks?
+
+      Write findings to data/scratchpad.md:
+      ## Paid-Billing Turn Analysis (date)
+      ### Finding N: [title]
+      - Problem: ...
+      - Impact: Saves X turns per task → Y premium saved
+      - Fix: ... (specific code change with file:line)
+    tier: high
+    role: researcher
+    priority: 1
+    skip_if_recent: false
+    timeout: 600
+
+  - id: analyze_tier_routing
+    prompt: |
+      [TIER ROUTING OPTIMIZATION FOR PAID BILLING]
+
+      When billing is ON, model choice directly impacts cost:
+      - Opus: 3× per request. Only use for complex multi-step tasks.
+      - Sonnet: 1× per request. Good balance for most tasks.
+      - Haiku: 0.33× per request. Perfect for simple lookups.
+      - GPT-4.1/4o: 0× (FREE!). Use for anything they can handle.
+
+      Read:
+      - src/secretary/router.py (scoring logic, tier boundaries)
+      - src/secretary/config.py (routing config)
+      - data/run_log.jsonl (what tasks got which tier, and how they performed)
+
+      Analyze:
+      1. Are tasks being routed to tiers that are too expensive for their complexity?
+      2. Could simple email reads use Haiku (0.33×) instead of Sonnet (1×)?
+      3. Could calendar checks use Haiku?
+      4. What's the cheapest model that can reliably do each task type?
+      5. Should we add a "free" tier using GPT-4.1/4o for trivial tasks?
+      6. Can the router use historical success rates to auto-tune tier boundaries?
+
+      Write findings to data/scratchpad.md (append):
+      ## Tier Routing Optimization
+      ### Current cost profile per task type:
+      | Task Type | Current Tier | Turns | Premium/Task | Could Be |
+    tier: high
+    role: researcher
+    priority: 2
+    skip_if_recent: false
+    timeout: 600
+
+  - id: analyze_creative_approaches
+    prompt: |
+      [CREATIVE COST REDUCTION RESEARCH]
+
+      Think beyond the obvious. What CREATIVE approaches could reduce premium requests?
+
+      Read:
+      - src/secretary/direct_agent.py
+      - src/secretary/watcher.py
+      - src/secretary/direct_tools.py
+
+      Consider:
+      1. **Speculative execution**: Run Haiku first as a "planner", then Opus only if needed
+      2. **Task batching**: Combine multiple simple tasks into one API call
+      3. **Predictive caching**: Pre-compute likely tool results before the agent asks
+      4. **Template responses**: For recurring tasks (daily email check), use cached templates
+      5. **Hybrid model chains**: Haiku decides what to do → Opus executes complex parts only
+      6. **Result memoization**: If we asked the same Gmail search 2 hours ago, reuse results
+      7. **Compressed context windows**: AggressiveJSON stripping for prior turns
+      8. **Exit early**: Detect when the agent is about to over-think simple tasks
+      9. **Auto model selection**: GitHub gives 10% discount on multipliers with auto selection
+
+      Write findings to data/scratchpad.md (append):
+      ## Creative Cost Reduction Ideas
+      ### Idea N: [title]
+      - Expected savings: X premium requests/day
+      - Implementation complexity: Low/Medium/High
+      - Risk: ...
+    tier: high
+    role: researcher
+    priority: 3
+    skip_if_recent: false
+    timeout: 600
+
+  # ── Builder: implement highest-impact findings ─────────────────────
+  - id: implement_turn_reduction
+    prompt: |
+      [IMPLEMENT TURN REDUCTION]
+
+      Read data/scratchpad.md for researcher findings on paid-billing turn reduction.
+      Read src/secretary/direct_agent.py and src/secretary/watcher.py.
+
+      TASK: Implement the TOP 3 highest-impact findings that reduce turns-per-task.
+      Focus on changes that are:
+      - Low risk (won't break existing functionality)
+      - High impact (saves the most premium requests)
+      - Testable (can verify with existing test suite)
+
+      Rules:
+      - Run: python -m pytest tests/ -q --tb=short (MUST pass)
+      - If tests fail, REVERT immediately
+      - Update data/scratchpad.md with what you changed
+      - Include before/after turn count estimates
+    tier: high
+    role: builder
+    depends_on: analyze_turn_patterns
+    priority: 5
+    skip_if_recent: false
+    timeout: 900
+
+  - id: implement_tier_routing
+    prompt: |
+      [IMPLEMENT ROUTING OPTIMIZATIONS]
+
+      Read data/scratchpad.md for tier routing findings.
+      Read src/secretary/router.py.
+
+      TASK: Implement routing improvements:
+      - Adjust tier boundaries so simple tasks use cheaper models
+      - Add cost-awareness to routing decisions (e.g., prefer Haiku for email reads)
+      - If a "free tier" using GPT-4.1 is feasible, add it as lowest-cost option
+
+      Rules:
+      - Run: python -m pytest tests/ -q --tb=short (MUST pass)
+      - If tests fail, REVERT
+      - Update data/scratchpad.md with changes
+    tier: high
+    role: builder
+    depends_on: analyze_tier_routing
+    priority: 6
+    skip_if_recent: false
+    timeout: 900
+
+  # ── Tester: validate and measure ────────────────────────────────────
+  - id: measure_improvements
+    prompt: |
+      [MEASURE PAID-BILLING OPTIMIZATION IMPACT]
+
+      Read data/scratchpad.md for all findings and changes.
+      Read src/secretary/direct_agent.py, watcher.py, router.py.
+
+      TASK:
+      1. Run full test suite: python -m pytest tests/ -q --tb=short
+      2. Estimate per-task premium cost (before vs after):
+         - Email triage: X turns × model_cost → New: Y turns × model_cost
+         - Calendar check: ...
+         - Research task: ...
+         - Code change: ...
+      3. Calculate projected monthly savings:
+         - At 300 premium/month (Pro): savings = ?
+         - At 1500 premium/month (Pro+): savings = ?
+      4. Write measurement report to data/scratchpad.md:
+         ## Paid-Billing Optimization Results
+         ### Test Results: X passed, Y failed
+         ### Per-Task Premium Cost (before → after):
+         | Task Type | Before (turns × cost) | After (turns × cost) | Savings |
+         ### Monthly Projection (assuming 50 tasks/day):
+    tier: high
+    role: tester
+    depends_on: implement_turn_reduction
+    priority: 8
+    skip_if_recent: false
+    timeout: 600
+
+  # ── Hot health check ───────────────────────────────────────────────
+  - id: health_check
+    prompt: >
+      Health check: verify copilot-api proxy responds on localhost:4141.
+      If OK, say "Health: OK".
+    tier: low
+    priority: 0

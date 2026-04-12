@@ -1,0 +1,49 @@
+# Self-Building & Research Campaign
+# Autonomous tasks for the secretary to improve itself and research new capabilities.
+# Run with: secretary watch --campaign campaigns/self-build.yaml
+
+tasks:
+  - prompt: >
+      Analyze the test suite in tests/ for coverage gaps. Compare the list of
+      source modules in src/secretary/ against test files in tests/. Identify
+      any modules that have no corresponding test file or have very few tests.
+      Create a prioritized list of the top 3 modules needing better test coverage.
+      For the highest-priority gap, write the test file with at least 5 meaningful
+      tests. Save to tests/test_<module>.py.
+    tier: medium
+    schedule: "weekdays"
+
+  - prompt: >
+      Review the last 20 entries in data/run_log.jsonl. Identify any recurring
+      failure patterns (same error type, same module, same tier). For each pattern
+      found, analyze the root cause and propose a fix. If the fix is straightforward
+      (< 20 lines changed), implement it directly in src/secretary/. Run the
+      relevant tests to verify the fix works.
+    tier: medium
+
+  - prompt: >
+      Research the current state of the goal system. Read goals.yaml and
+      data/goal_state.json. Identify any sub-goals that have been "in-progress"
+      for more than 2 review cycles without advancing. For each stalled sub-goal,
+      analyze why it's stuck and either: (a) break it into smaller steps,
+      (b) mark it as blocked with evidence, or (c) implement the next concrete
+      step to advance it.
+    tier: medium
+    schedule: "weekdays"
+
+  - prompt: >
+      Audit src/secretary/tool_policy.py, src/secretary/goal_guardrails.py,
+      and config.yaml for security best practices. Check that: credentials
+      are never logged, write paths are properly restricted, sandbox isolation
+      is maintained, and budget gates can't be bypassed. Document any findings
+      as comments in the relevant source files.
+    tier: low
+    schedule: "weekends"
+
+  - prompt: >
+      Check data/run_log.jsonl for cost efficiency. Calculate average cost per
+      task by tier (low/medium/high) and identify the most expensive tasks.
+      If any low-tier task is consistently costing more than expected, investigate
+      why and suggest router improvements. Save a brief analysis to docs/cost-analysis.md.
+    tier: low
+    schedule: "weekends"

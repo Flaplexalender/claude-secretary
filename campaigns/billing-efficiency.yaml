@@ -1,0 +1,73 @@
+# Billing Efficiency Sprint — maximize work per premium request
+# Runs 3 parallel research tasks to find and implement further optimizations.
+# Use: secretary watch --campaign campaigns/billing-efficiency.yaml --max-runs 1
+#
+# Key metric: turns-per-task (lower = fewer premium requests = cheaper)
+# Target: average 3 turns/task (down from 6.6)
+
+tasks:
+  # Research task 1: Measure current baseline and compare with new optimizations
+  - id: baseline_metrics
+    prompt: |
+      EFFICIENCY AUDIT — Measure and compare billing efficiency.
+
+      Current state: Secretary averages ~6.6 turns per task. Each turn = 1 premium request.
+      Goal: Get this down to 2-3 turns per task.
+
+      Context: Copilot billing is PER-REQUEST with model multipliers:
+      - GPT-4.1 = 0× (FREE), Haiku = 0.33×, Sonnet = 1×, Opus = 3×
+      - Token count IRRELEVANT — 50 tokens or 50K = same cost per request
+
+      Tasks:
+      1. Read data/run_log.jsonl — compute average turns/task, tools/turn, premium/task
+      2. Read src/secretary/direct_agent.py — check the system prompt, turn budget, max_tokens
+      3. Read src/secretary/config.py — verify all optimization toggles are enabled
+      4. Write a metrics summary to data/scratchpad.md with BEFORE vs AFTER comparison
+      5. Identify the top 3 remaining efficiency gaps (things that waste turns)
+
+      Key question: What % of turns are "wasted" (planning, acknowledgments, single tool calls)?
+      Write your findings to data/scratchpad.md.
+    tier: high
+    timeout: 600
+    priority: 1
+
+  # Research task 2: Analyze tool call patterns to find batching opportunities
+  - id: tool_batching_analysis
+    prompt: |
+      TOOL CALL PATTERN ANALYSIS — Find opportunities to increase tools-per-turn.
+
+      Current state: Secretary averages ~1.4-2.6 tools/turn. Copilot does 5-10+.
+
+      Tasks:
+      1. Read data/run_log.jsonl — for each task, count tools_used and num_turns
+      2. Compute tools_per_turn ratio for each task
+      3. Read src/secretary/direct_agent.py — check system prompt rules about batching
+      4. Read src/secretary/direct_tools.py — identify which tools are commonly called together
+      5. Write to data/scratchpad.md: which tool combinations should ALWAYS be called together
+      6. Propose specific system prompt changes that would increase tools-per-turn
+
+      The system prompt says "Call 3+ tools per response" but actual average is ~2.
+      WHY? What's preventing the model from batching more tool calls?
+    tier: high
+    timeout: 600
+    priority: 2
+
+  # Research task 3: Analyze whether file prefetch eliminates file_read turns
+  - id: prefetch_effectiveness
+    prompt: |
+      PREFETCH EFFECTIVENESS — Does aggressive context injection actually save turns?
+
+      Tasks:
+      1. Read src/secretary/direct_agent.py — check _build_aggressive_context() and _MAX_PREFETCH_BYTES
+      2. Read src/secretary/watcher.py — check _predictive_prefetch() and context_preload
+      3. Read data/run_log.jsonl — compare turn counts for tasks with vs without prefetch
+      4. Check: Is 30KB prefetch budget enough? Should we increase to 50KB?
+      5. Check: Does the model actually USE pre-loaded files or still call file_read?
+      6. Write findings to data/scratchpad.md
+
+      If the model ignores pre-loaded context and calls file_read anyway, we need
+      to either (a) put it in the system prompt not the user message, or
+      (b) remove file_read from the tool list when files are pre-loaded.
+    tier: high
+    timeout: 600
+    priority: 3

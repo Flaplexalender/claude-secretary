@@ -1,0 +1,33 @@
+# Campaign — tasks for the 24/7 autonomous daemon.
+#
+# The watcher runs these tasks on every cycle (default: every 30 minutes).
+# Each task gets routed to the appropriate model tier automatically,
+# or you can force a tier with the 'tier' key.
+#
+# The agent has Gmail and Calendar MCP tools available automatically.
+# Task results are logged to data/run_log.jsonl.
+
+tasks:
+  - prompt: >
+      Check my Gmail for any unread messages from today using gmail_search.
+      For each important message, provide a one-line summary (sender, subject, urgency).
+      Skip newsletters and automated notifications.
+    tier: low
+
+  - prompt: >
+      Check my calendar for today's events using calendar_today.
+      If there are any events in the next 2 hours, highlight them.
+      If there are conflicts or back-to-back meetings, flag them.
+    tier: low
+
+  - prompt: >
+      Review the data/run_log.jsonl file for task failures in the last 24 hours.
+      If there are recurring failures, summarize the pattern and suggest fixes.
+      If all tasks are passing, just say "All clear — no failures."
+    tier: low
+
+  - prompt: >
+      Check my Gmail drafts folder using gmail_search with query "in:drafts".
+      If there are drafts older than 3 days, list them so I can decide
+      whether to send or delete them.
+    tier: low

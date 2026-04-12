@@ -1,0 +1,54 @@
+# Claude Secretary — Configuration
+# Copy to config.yaml and customize as needed.
+
+# Copilot-API proxy URL (start with: npx copilot-api@latest start)
+anthropic_base_url: "${ANTHROPIC_BASE_URL:-http://localhost:4141}"
+
+data_root: data
+
+# Model routing — which model for which complexity
+routing:
+  default_tier: medium
+  tiers:
+    low:
+      model: claude-haiku-4.5      # 0.33x premium (cheapest Claude on Copilot)
+      max_turns: 10
+      description: "Cheap tier — simple lookups, formatting, quick questions"
+    medium:
+      model: claude-sonnet-4.6      # 1x premium request on Copilot Pro
+      max_turns: 25
+      description: "Standard work — code, email, research, analysis"
+    high:
+      model: claude-opus-4.6        # 3x premium requests on Copilot Pro
+      max_turns: 40
+      max_budget_usd: 5.0
+      description: "Complex — architecture, multi-file, deep analysis"
+
+# 24/7 watcher settings
+watcher:
+  interval_minutes: 30
+  max_runs: 0                       # 0 = unlimited
+  pause_on_failure: true
+  campaign_file: campaign.yaml
+  max_premium_per_cycle: 3.0        # max premium multiplier per cycle (0 = unlimited)
+  max_retries: 2                    # retries per failed task (0 = no retry)
+  retry_base_delay: 5.0             # seconds before first retry (doubles each time)
+
+# Memory persistence
+memory:
+  short_max: 20
+  long_max: 50
+  path: data/memory.json
+
+# Self-improvement pipeline
+self_improve:
+  auto_promote: false               # Require human approval
+  test_timeout: 120
+
+# MCP tools — Gmail & Calendar are registered as in-process SDK tools.
+# They auto-activate when Google OAuth is configured (run: secretary auth).
+# No additional config needed — tools.py handles registration.
+#   calendar:
+#     type: stdio
+#     command: python
+#     args: ["-m", "secretary.mcp_tools.calendar_server"]

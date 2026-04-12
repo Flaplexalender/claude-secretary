@@ -1,0 +1,34 @@
+# PII patterns to block from commits.
+# One regex per line. Lines starting with # are comments.
+# This file is tracked in git so all contributors know what's blocked.
+# The pre-commit hook scans staged file contents against these patterns.
+
+# Real names
+alexander\.dueck
+Alexander Dueck
+alexd(?!eterminist)
+
+# Email addresses (specific)
+alex\.dueck123@
+lex\.dueck@
+@uvic\.ca
+
+# Usernames / handles
+flaplexalender
+alexander123987
+
+# Location identifiers
+Victoria,?\s*BC
+Victoria,?\s*British Columbia
+
+# Hardcoded personal paths
+C:\\Users\\Alexander
+C:\\Users\\alexd
+C:/Users/Alexander
+C:/Users/alexd
+
+# Proprietary mechanism details (do not expose in public repo)
+X-Initiator
+(?<!\d)0 premium
+zero.premium
+billing.*trick

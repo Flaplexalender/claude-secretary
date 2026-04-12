@@ -1,0 +1,91 @@
+# Efficiency Sprint Campaign — Phase 2
+#
+# Implements remaining high-ROI optimizations from researcher findings.
+# Already done (Phase 1): force_first_tool, predictive_prefetch, tool_memoization
+# This phase: aggressive_early_exit, task_batching, tool_description_shortening
+#
+# Launch: secretary watch --campaign campaigns/efficiency-sprint.yaml --max-runs 1
+
+tasks:
+  # ── Task 1: Aggressive Early Exit ─────────────────────────────
+  - id: implement_early_exit
+    prompt: |
+      [IMPLEMENT: AGGRESSIVE EARLY EXIT]
+
+      Goal: After each agent turn, evaluate if the response is "complete enough."
+      If the model has gathered data and written a summary, stop early.
+
+      Read these files first (batch reads):
+      - src/secretary/direct_agent.py (focus on agent loop around line 870-960)
+      - src/secretary/config.py (OptimizationConfig)
+
+      Implementation plan:
+      1. Add `aggressive_early_exit: bool = True` to OptimizationConfig
+      2. In the agent loop, after processing response blocks (around line 895):
+         - If turn >= 2 AND response.stop_reason == "end_turn" (no tool_use), already exits
+         - NEW: If turn >= 2 AND response has tool_use but ALL tools are read-only
+           (gmail_search, gmail_read, file_read, file_list, calendar_today, calendar_list, calendar_search),
+           AND the response also contains substantial text (>200 chars),
+           → inject a followup that says "You have enough data. Write your final response now." with no tools.
+      3. This saves 1-2 over-thinking turns on ~30% of tasks.
+
+      Write the implementation. Run `python -m pytest tests/ -x -q --tb=short` to verify all tests pass.
+      Write at least 2 tests in tests/test_optimizations.py verifying the new config field.
+    tier: high
+    skip_if_recent: false
+    timeout: 600
+
+  # ── Task 2: Tool Description Shortening ─────────────────────
+  - id: shorten_tool_descriptions
+    prompt: |
+      [IMPLEMENT: SHORTER TOOL DESCRIPTIONS]
+
+      Goal: Reduce tool schema token overhead (~1,230 tokens currently).
+      Short descriptions = fewer input tokens per turn = faster + cheaper.
+
+      Read: src/secretary/direct_tools.py (full file — focus on tool descriptions)
+
+      Implementation:
+      1. Shorten every tool description to <15 words. Examples:
+         - gmail_search: "Search Gmail messages" (not "Search for email messages in the user's Gmail inbox...")
+         - file_read: "Read a file's contents" 
+         - calendar_today: "List today's calendar events"
+      2. Shorten parameter descriptions similarly.
+      3. DON'T change function names, parameter names, or behavior — descriptions only.
+      4. Target: reduce total schema tokens from ~1,230 to ~600.
+
+      Run tests after: `python -m pytest tests/ -x -q --tb=short`
+    tier: high
+    skip_if_recent: false
+    timeout: 300
+
+  # ── Task 3: Task Batching Infrastructure ────────────────────
+  - id: implement_task_batching
+    prompt: |
+      [IMPLEMENT: TASK BATCHING IN WATCHER]
+
+      Goal: Group compatible campaign tasks into single agent calls.
+      Instead of 3 separate calls (check email, check calendar, update notes),
+      combine into ONE call with a merged prompt.
+
+      Read these files:
+      - src/secretary/watcher.py (focus on _run_cycle, lines 360-600)
+      - src/secretary/config.py (OptimizationConfig)
+
+      Implementation:
+      1. Add `task_batching: bool = True` and `max_batch_size: int = 3` to OptimizationConfig
+      2. Add `batch_compatible: true` flag support in campaign YAML task definitions
+      3. In _run_cycle(), before iterating tasks:
+         - Group consecutive tasks with `batch_compatible: true` and same tier into batches
+         - For each batch: merge prompts with "---" separators into one combined prompt
+         - Run the combined prompt as a single agent call
+         - Count as N tasks passed/failed based on the single result
+      4. Non-batched tasks run normally (backwards compatible)
+
+      This saves 2-3 agent invocations per watcher cycle for monitoring campaigns.
+
+      Run tests after: `python -m pytest tests/ -x -q --tb=short`
+      Write at least 2 tests verifying batch grouping logic.
+    tier: high
+    skip_if_recent: false
+    timeout: 600

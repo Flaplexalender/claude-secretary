@@ -1,0 +1,155 @@
+# Long-Horizon Goals — Strategic objectives for Claude Secretary
+#
+# This file defines WHAT the secretary should be working toward.
+# The goal planner (goals.py) reviews these periodically and generates
+# proactive tasks to advance stalled or neglected goals.
+#
+# Format:
+#   - id: unique identifier
+#   - description: what this goal achieves
+#   - success_criteria: measurable outcome
+#   - priority: 1=critical, 5=stretch
+#   - status: not-started | in-progress | done
+#   - sub_goals: hierarchical breakdown (status can be overridden by goal_state.json)
+#   - depends_on: [sub-goal-ids] — prerequisites that must be 'done' before work starts
+#
+# Human-authored, version-controlled. Machine state lives in data/goal_state.json.
+
+goals:
+  - id: prefix-survival
+    description: "Survive the agent prefix kill switch"
+    success_criteria: "All campaign tiers execute normally without agent prefix, staying within budget"
+    priority: 1
+    status: done
+    sub_goals:
+      - id: oracle-production
+        description: "Oracle ensemble handles all campaign tiers in production"
+        status: done
+        evidence: "6.0x total, 91% cheaper than all-Opus"
+      - id: learned-router
+        description: "Train a cost-aware router on task success/cost data from run_log"
+        status: done
+        evidence: "Bayesian bandit router, commit ce98dca, 1488 tests"
+      - id: cost-monitoring
+        description: "Automated alerts when premium spend exceeds daily/weekly budget"
+        status: done
+        evidence: "CostMonitor wired into watcher cycle with Gmail alerts, budget gate, CLI command. 16 tests."
+
+  - id: self-sustaining-autonomy
+    description: "Decision-making agent that self-triggers and self-directs"
+    success_criteria: "Secretary generates >50% of executed tasks autonomously (not from static YAML)"
+    priority: 2
+    status: in-progress
+    sub_goals:
+      - id: event-bus
+        description: "Reactive event system — Gmail, Calendar, file change triggers"
+        status: done
+      - id: ooda-loop
+        description: "LLM-driven reactive task generation from events"
+        status: done
+      - id: goal-planner
+        description: "Proactive goal-driven task generation"
+        status: in-progress
+      - id: live-integration-test
+        description: "End-to-end test: events + OODA + goals running together in watcher"
+        status: done
+        evidence: "test_integration_events_ooda_goals.py — 4 tests verify merged task execution"
+        depends_on: [event-bus, ooda-loop, goal-planner]
+      - id: autonomous-ratio
+        description: "Measure and optimize the ratio of autonomous vs static tasks"
+        status: not-started
+        depends_on: [live-integration-test]
+
+  - id: self-improvement
+    description: "Autonomous code review, testing, and architecture improvements"
+    success_criteria: "Secretary autonomously finds and fixes bugs, improves test coverage"
+    priority: 3
+    status: in-progress
+    sub_goals:
+      - id: failure-analysis
+        description: "Feed failed eval traces to LLM for targeted prompt/code fixes"
+        status: in-progress
+        evidence: "TextGrad-lite module integrated with self-improve pipeline"
+      - id: code-review
+        description: "Autonomous code quality review with actionable improvements"
+        status: not-started
+        depends_on: [failure-analysis]
+      - id: test-coverage
+        description: "Identify and fill test coverage gaps autonomously"
+        status: not-started
+        depends_on: [failure-analysis]
+
+  - id: self-harness
+    description: "Secretary builds and maintains its own test/evaluation harness"
+    success_criteria: "Secretary generates pytest tests from goal descriptions, runs them in sandbox, and uses results as verification signals — closing the loop between goals and ground-truth validation"
+    priority: 2
+    status: in-progress
+    sub_goals:
+      - id: harness-generation
+        description: "LLM generates pytest code from goal success criteria"
+        status: in-progress
+        evidence: "goal_harness.py — Haiku generates test code, subprocess sandbox runner, 3-phase validation (syntax/known-good/known-bad), failure feedback loop"
+        done_criteria: "Validation loop achieves 3 consecutive passes for a real goal — test passes on project dir, fails on empty dir"
+      - id: harness-verification
+        description: "Harness test results injected into verification judge as ground truth"
+        status: not-started
+        depends_on: [harness-generation]
+      - id: harness-evolution
+        description: "Secretary evolves its test suite over time — adds tests for new goals, prunes stale tests"
+        status: not-started
+        depends_on: [harness-generation]
+      - id: harness-ci
+        description: "Harness runs automatically on every goal completion attempt"
+        status: not-started
+        depends_on: [harness-verification]
+
+  - id: autoresearch-optimization
+    description: "Break past eval score plateau via smarter self-optimization"
+    success_criteria: "Eval score improves beyond 0.770 baseline through autonomous experimentation"
+    priority: 3
+    status: in-progress
+    sub_goals:
+      - id: ucb1-framework
+        description: "UCB1 exploration over 6 dimensions"
+        status: done
+      - id: binary-judge
+        description: "PASS/FAIL judge replacing 0-10 scale"
+        status: done
+      - id: textgrad-analysis
+        description: "Feed failed traces to LLM for GEPA-style prompt evolution"
+        status: done
+        evidence: "textgrad_lite.py — Haiku analyzes eval failures, generates targeted prompt changes. 6/6 steps completed."
+      - id: task-specific-hints
+        description: "Per-task prompt hints instead of generic one-size-fits-all changes"
+        status: not-started
+        depends_on: [textgrad-analysis]
+
+  - id: oracle-default
+    description: "Oracle ensemble as default billing architecture for all tiers"
+    success_criteria: "Default campaign tier uses oracle, <2x premium per cycle"
+    priority: 4
+    status: in-progress
+    sub_goals:
+      - id: oracle-implemented
+        description: "Oracle ensemble working with 3 free workers + Opus checkpoints"
+        status: done
+      - id: oracle-all-tiers
+        description: "Oracle handles low/medium/high tasks not just oracle-specific"
+        status: not-started
+        depends_on: [oracle-implemented]
+
+  - id: stretch-features
+    description: "Quality-of-life and expansion features"
+    success_criteria: "At least one stretch feature shipped and working"
+    priority: 5
+    status: not-started
+    sub_goals:
+      - id: web-dashboard
+        description: "Web UI for monitoring secretary status, logs, and metrics"
+        status: not-started
+      - id: telegram-integration
+        description: "Telegram bot interface for mobile interaction"
+        status: not-started
+      - id: deterministic-pipelines
+        description: "Code-based pipelines for simple tasks (no LLM needed)"
+        status: not-started

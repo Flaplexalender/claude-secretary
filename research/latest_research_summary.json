@@ -1,0 +1,5 @@
+{
+  "key": "latest_research_cycle",
+  "value": "Cycle 2 analyzed 4 new files: run_log.py reveals a rich self-analytics engine (audit/analyze/forecast) that is never autonomously invoked by the watcher — only available via CLI. self_improve.py uses the OLD agent.py (MCP-based) path, not direct_agent.py, making it effectively broken in direct-agent mode. Its rollback() is incomplete (only restores MOD files, not NEW/DEL). campaign.py has thorough YAML validation with circular dependency detection, but the watcher never calls it at runtime. config.py has a dead max_budget_usd field that direct_agent.py never enforces. Key new autonomy gaps: unbounded run_log with O(n) reads, static currency rate, no campaign hot-reload validation, and the two diverging agent paths (MCP vs direct) creating tech debt. The analytics pipeline (audit→analyze→forecast) is the most promising unused capability for autonomous self-optimization.",
+  "updated": "2025-01-27"
+}

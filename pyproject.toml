@@ -1,0 +1,42 @@
+[project]
+name = "claude-secretary"
+version = "0.1.0"
+description = "24/7 AI research assistant & secretary — Claude SDK via Copilot Pro"
+requires-python = ">=3.11"
+
+dependencies = [
+    "claude-agent-sdk>=0.1.0",
+    "anthropic>=0.80",
+    "httpx>=0.27",
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+gmail = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.1",
+    "google-auth-httplib2>=0.1",
+    "mcp>=1.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+all = ["claude-secretary[gmail,dev]"]
+
+[project.scripts]
+secretary = "secretary.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

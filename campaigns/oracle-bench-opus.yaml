@@ -1,0 +1,33 @@
+# Oracle Benchmark — Opus baseline
+# Same tasks as oracle-test.yaml but using pure Opus (tier: high)
+# Compare cost & quality against oracle ensemble
+
+name: oracle-bench-opus
+description: Opus baseline for oracle benchmark
+
+tasks:
+  - prompt: >
+      Read the file src/secretary/oracle.py and summarize its architecture.
+      What are the key functions and how does the majority voting work?
+    tier: high
+    id: read-oracle
+    priority: 1
+    skip_if_recent: false
+
+  - prompt: >
+      Search the secretary codebase for all files that import from router.py.
+      List each file and what it imports.
+    tier: high
+    id: search-imports
+    priority: 2
+    skip_if_recent: false
+    depends_on: read-oracle
+
+  - prompt: >
+      Read config.yaml and data/heartbeat.json. Report the current
+      configuration: default tier, reasoning effort,
+      and last heartbeat time.
+    tier: high
+    id: config-check
+    priority: 3
+    skip_if_recent: false

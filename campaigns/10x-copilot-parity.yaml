@@ -1,0 +1,132 @@
+# 10x Copilot Parity Campaign — Parallel Instances
+#
+# Goal: Get Opus 4.6 to match Copilot's 5-15 tools/turn efficiency.
+# Current baseline: 2.15 tools/turn, 7.2 turns/task.
+# Target: 5+ tools/turn, 3-4 turns/task.
+#
+# All tasks run with agent_prefix=true.
+#
+# Launch 4 instances in parallel terminals:
+#   secretary watch --instance bench --role researcher --coordinate --campaign campaigns/10x-copilot-parity.yaml --max-runs 1
+#   secretary watch --instance prompt --role researcher --coordinate --campaign campaigns/10x-copilot-parity.yaml --max-runs 1
+#   secretary watch --instance tools --role builder --coordinate --campaign campaigns/10x-copilot-parity.yaml --max-runs 1
+#   secretary watch --instance validator --role builder --coordinate --campaign campaigns/10x-copilot-parity.yaml --max-runs 1
+
+tasks:
+  # ── Instance 1: Benchmark the new tools ──────────────────
+  - id: benchmark_new_tools
+    prompt: |
+      BENCHMARK — Test the 3 new tools (file_edit, grep_search, run_command) and measure efficiency.
+
+      New tools were just added to match Copilot's capabilities:
+      - file_edit: search & replace in files (no full rewrite needed)
+      - grep_search: regex search across files in a directory
+      - run_command: execute shell commands (tests, git, builds)
+
+      YOUR TASK (use ALL new tools in this run):
+      1. Use grep_search to find all function definitions in src/secretary/direct_agent.py
+      2. Use grep_search to find all tool registrations in src/secretary/direct_tools.py
+      3. Use file_read to read data/run_log.jsonl (last 1000 chars)
+      4. Use run_command to run: python -m pytest tests/test_direct_tools.py -q --tb=short
+      5. Use file_list to check src/secretary/ directory contents
+      6. Use file_edit to append a timestamp comment to data/scratchpad.md
+
+      CRITICAL: Call ALL 6 tools above in your FIRST response. They are independent.
+      Write benchmark results to data/scratchpad.md including:
+      - How many tools you called per turn
+      - Whether grep_search saves turns vs file_read
+      - Whether run_command works for test execution
+    tier: high
+    role: researcher
+    priority: 1
+    timeout: 900
+
+  # ── Instance 2: System prompt A/B testing ───────────────
+  - id: prompt_density_test
+    prompt: |
+      PROMPT ANALYSIS — Test whether the new parallelization patterns in the system prompt
+      actually increase tool density.
+
+      The system prompt was upgraded with:
+      - Explicit parallelization examples (file_list + grep_search + file_read together)
+      - Tool strategy section (use file_edit not file_write, use grep_search to find code)
+      - Stronger density targets (5-10 tools/turn instead of 3-5)
+
+      YOUR TASK (demonstrate maximum tool density):
+      1. Read src/secretary/direct_agent.py — find _build_system_prompt()
+      2. Read src/secretary/direct_tools.py — find all tool schemas
+      3. Search for "DENSITY" in direct_agent.py using grep_search
+      4. Search for "BATCH" in direct_agent.py using grep_search
+      5. Read data/run_log.jsonl to check if previous runs improved
+      6. Read config.yaml to check optimization settings
+      7. List the campaigns/ directory
+
+      Call ALL of the above in 1-2 turns (target: 7 tools in turn 1).
+      Write analysis to data/scratchpad.md (APPEND):
+      ## Prompt Density Test
+      - Actual tools called per turn in THIS run
+      - Which prompt patterns drove the most tool batching
+      - Recommendations for further improvement
+    tier: high
+    role: researcher
+    priority: 2
+    timeout: 900
+
+  # ── Instance 3: Self-improve with new tools ─────────────
+  - id: improve_with_new_tools
+    prompt: |
+      SELF-IMPROVE — Use the new tools (file_edit, grep_search, run_command) to
+      implement an efficiency optimization.
+
+      Pick ONE of these improvements and implement it:
+
+      A) TOOL RESULT STREAMING: In direct_agent.py, when a tool result is very long
+         (>5000 chars), summarize it before adding to context. This saves input tokens.
+
+      B) PARALLEL BATCH HINTS: After each turn's tool results, inject a hint like
+         "You called N tools. Target is 5-10. Call more next turn." This reinforces density.
+
+      C) SMART TOOL SELECTION: In _select_tool_schemas(), always include file_edit,
+         grep_search, run_command (they're useful for ALL task types, not just "file" tasks).
+
+      WORKFLOW (demonstrate new tools):
+      1. grep_search to find the relevant code section
+      2. file_read the surrounding context
+      3. file_edit to make the change (NOT file_write)
+      4. run_command to run tests: python -m pytest tests/ -q --tb=short
+      5. Write what you did to data/scratchpad.md
+
+      Use grep_search + file_read in parallel (turn 1), then file_edit + run_command (turn 2).
+    tier: high
+    role: builder
+    priority: 3
+    timeout: 1200
+
+  # ── Instance 4: Validate and stress-test ────────────────
+  - id: validate_efficiency
+    prompt: |
+      VALIDATE — Stress-test the new tool suite and verify the efficiency improvements work.
+
+      YOUR TASK (push for maximum tools/turn):
+      1. Run the full test suite: run_command({command: 'python -m pytest tests/ -q --tb=short', timeout: 90})
+      2. Count tools in registry: grep_search({pattern: 'name.*file_edit|name.*grep_search|name.*run_command', path: 'src/secretary/direct_tools.py'})
+      3. Verify prompt patterns: grep_search({pattern: 'PARALLELIZATION|DENSITY|BATCH', path: 'src/secretary/direct_agent.py'})
+      4. Check run_log for recent metrics: file_read({path: 'data/run_log.jsonl'})
+      5. List available campaigns: file_list({path: 'campaigns/'})
+      6. Check config: file_read({path: 'config.yaml'})
+      7. Verify tool schemas match: grep_search({pattern: 'description.*Example', path: 'src/secretary/direct_tools.py'})
+
+      Call ALL 7 tools in your FIRST turn.
+
+      Then write a validation report to data/scratchpad.md:
+      ## Validation Report
+      - Test results: PASS/FAIL
+      - New tools present: YES/NO for each
+      - System prompt updated: YES/NO
+      - Estimated tools/turn improvement: X → Y
+      - Remaining gaps vs Copilot
+    tier: high
+    role: builder
+    depends_on: benchmark_new_tools
+    priority: 4
+    timeout: 900

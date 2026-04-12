@@ -1,0 +1,152 @@
+# 10x Efficiency Research — Parallel Instances
+#
+# Each task runs on a separate Secretary instance (agent_prefix=true).
+# Focus: deep research and experimentation that builds on prior optimization work.
+#
+# Launch (each in a separate terminal):
+#   secretary run --campaign campaigns/10x-research-parallel.yaml --task benchmark_baseline
+#   secretary run --campaign campaigns/10x-research-parallel.yaml --task prompt_ab_test
+#   secretary run --campaign campaigns/10x-research-parallel.yaml --task copilot_patterns
+#   secretary run --campaign campaigns/10x-research-parallel.yaml --task tool_schema_audit
+#   secretary run --campaign campaigns/10x-research-parallel.yaml --task continuation_test
+#
+# Or run all sequentially:
+#   secretary watch --campaign campaigns/10x-research-parallel.yaml --max-runs 1
+
+tasks:
+  # ── Task 1: Baseline Metrics ──────────────────────────
+  - id: benchmark_baseline
+    prompt: |
+      BENCHMARK BASELINE — Measure current tools-per-turn and turns-per-task.
+
+      Recent changes to direct_agent.py and direct_tools.py need benchmarking:
+      - Budget signal now actually appended to messages (was orphaned)
+      - Empty response continuation ("Continue. Call the tools needed...")
+      - max_tokens truncation handling (don't break with pending tool calls)
+      - OpenAI endpoint now maps finish_reason="length" to "max_tokens" properly
+      - Tool descriptions now have input_examples (72%→90% accuracy per Anthropic)
+      - force_tools on ALL non-final turns (tool_choice: "any")
+
+      YOUR TASK:
+      1. Read data/run_log.jsonl — calculate from recent runs:
+         - Average tools_per_turn = total tools / total turns
+         - Average turns_per_task
+         - Tool error rate (errors / total tool calls)
+         - Distribution: how many runs used 1 tool/turn vs 3+ vs 5+
+      2. Write a benchmark report to data/scratchpad.md with:
+         - Current baseline numbers
+         - Before/after comparison if historical data exists
+         - Which optimization had the most impact
+      3. If run_log.jsonl has fewer than 5 recent entries, note that and
+         suggest running a few test tasks to gather data.
+    tier: high
+    timeout: 600
+
+  # ── Task 2: System Prompt A/B Testing ───────────────
+  - id: prompt_ab_test
+    prompt: |
+      SYSTEM PROMPT A/B ANALYSIS — Find the most effective prompt patterns.
+
+      The system prompt in direct_agent.py has two modes:
+      - Ultra-compact (max_turns <= 3): very aggressive density rules
+      - Normal (max_turns > 3): standard rules with DENSITY/BATCH/CONTINUE
+
+      YOUR TASK:
+      1. Read src/secretary/direct_agent.py — find _build_system_prompt()
+      2. Read data/run_log.jsonl — correlate prompt rules with actual tool density
+      3. Research what makes agentic prompts effective:
+         - Read data/scratchpad.md for any prior research
+         - Check if any runs achieved 5+ tools/turn and what prompt was active
+      4. Write analysis to data/scratchpad.md (APPEND, don't overwrite):
+         ## Prompt A/B Analysis
+         - Which rules correlate with higher tool density?
+         - Are there runs where the model ignored density rules?
+         - Concrete prompt changes that could push from 3 to 5+ tools/turn
+         - Consider: should tool_choice "any" be enough, or does the text matter?
+    tier: high
+    timeout: 900
+
+  # ── Task 3: Copilot Pattern Analysis ─────────────────
+  - id: copilot_patterns
+    prompt: |
+      COPILOT PATTERN ANALYSIS — How does Copilot achieve 5-10+ tools per turn?
+
+      VS Code Copilot consistently makes 5-10+ tool calls in a single response.
+      Secretary averages 1.3-3.3. Identify what Copilot does differently.
+
+      YOUR TASK:
+      1. Read the full system prompt in src/secretary/direct_agent.py
+      2. Read the tool schemas in src/secretary/direct_tools.py
+      3. Analyze these hypotheses and write findings to data/scratchpad.md:
+         a) TOOL_CHOICE: Copilot uses tool_choice="required" on every turn?
+            Secretary uses "any" on non-final turns. Same or different effect?
+         b) SYSTEM PROMPT DENSITY: Does Copilot's prompt have density targets?
+            Our prompt says "minimum 3, target 5-8" — is this strong enough?
+         c) CONTINUATION LOOPS: Copilot runs server-side loops (pause_turn).
+            Secretary runs client-side. Is there a latency difference?
+         d) TOOL SCHEMA SIZE: Copilot has ~20-40 lightweight tools.
+            Secretary has 12 tools with now-expanded descriptions.
+            Does schema size affect density?
+         e) BUDGET SIGNALING: Copilot shows turn counts in system prompt.
+            Secretary now does too (turn_budget_signal). Same pattern?
+      4. Propose 3 concrete changes ranked by expected impact.
+    tier: high
+    timeout: 900
+
+  # ── Task 4: Tool Schema Optimization ─────────────────
+  - id: tool_schema_audit
+    prompt: |
+      TOOL SCHEMA AUDIT — Optimize schemas for maximum tool call accuracy.
+
+      Anthropic's engineering blog: adding input_examples improves accuracy 72%→90%.
+      We just added examples to all tool descriptions. Now audit for correctness.
+
+      YOUR TASK:
+      1. Read src/secretary/direct_tools.py — review ALL tool schemas
+      2. For each tool, verify:
+         - Description is clear and includes a usage example
+         - Parameter descriptions explain what values are valid
+         - Required fields are correctly marked
+         - Input schema types match what the function actually expects
+      3. Read the last 20 entries from data/run_log.jsonl:
+         - Find tools that failed (look for "Error" in outputs)
+         - Identify common parameter mistakes
+         - Check if any tool is NEVER called (dead tool — remove from schemas)
+      4. Write audit results to data/scratchpad.md:
+         ## Tool Schema Audit
+         - Tools with errors: [list]
+         - Missing/wrong examples: [list]
+         - Dead tools: [list]
+         - Schema size (token count estimate): [number]
+    tier: high
+    timeout: 600
+
+  # ── Task 5: Continuation/Recovery Testing ────────────
+  - id: continuation_test
+    prompt: |
+      CONTINUATION MECHANISM TEST — Verify error recovery paths work.
+
+      Three new recovery mechanisms were added to direct_agent.py:
+      1. Empty response continuation: inject "Continue" prompt
+      2. max_tokens truncation: continue with tool calls instead of breaking
+      3. Budget signal: inject urgency messages at turn boundaries
+
+      YOUR TASK:
+      1. Read src/secretary/direct_agent.py — find all three mechanisms
+      2. Read tests/ directory for direct_agent tests
+      3. Verify each mechanism:
+         a) Empty response: Does the injected assistant message follow
+            Anthropic's format? (must be list with text block, not string)
+         b) max_tokens: When stop_reason="max_tokens" with tool_use blocks,
+            do we execute those tools? Does the log message fire?
+         c) Budget signal: Is budget_note appended as SEPARATE user message
+            (not mixed with tool_results)? Does it fire at turn >= 1?
+      4. Check for logic bugs in the main loop:
+         - The `elif response.stop_reason == "end_turn" and not has_tool_use`
+           is unreachable (we already break on `not has_tool_use` above).
+           Should this be cleaned up?
+         - Could the continuation prompt create an infinite loop
+           if the model keeps returning empty?
+      5. Write findings to data/scratchpad.md
+    tier: high
+    timeout: 600

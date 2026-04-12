@@ -1,0 +1,128 @@
+# TextGrad-Guided Autoresearch — OPRO + TextGrad closed-loop optimization
+#
+# Replaces blind UCB1 dimension selection with INFORMED proposals:
+# 1. prompt_optimizer.py reads experiment trajectory + TextGrad failure analysis
+# 2. OPRO-style meta-prompt shows optimizer ALL previous attempts + scores
+# 3. TextGrad gradients identify SPECIFIC failing tasks + root causes
+# 4. Haiku generates a TARGETED proposal (not random dimension)
+# 5. Agent applies proposal, runs eval 3x, keeps or discards
+# 6. Results logged to autoresearch_results.tsv (same format as UCB1 version)
+#
+# Based on:
+#   - OPRO (Yang et al. ICLR 2024): solution trajectory → meta-optimization
+#   - ProTeGi/APO (Pryzant et al. EMNLP 2023): text gradients → directed mutations
+#   - TextGrad (Yuksekgonul et al. Nature 2025): backprop through text
+#
+# Run:
+#   secretary watch --campaign campaigns/textgrad_autoresearch.yaml --max-runs 0
+#
+# Prerequisites:
+#   python scripts/establish_baseline.py   # creates initial TSV with baseline
+#   At least one eval result JSON in data/ (from run_eval.py --output-json)
+
+name: textgrad_autoresearch
+description: "OPRO + TextGrad closed-loop prompt optimization (replaces blind UCB1)"
+
+tasks:
+  - id: textgrad_optimize
+    prompt: |
+      You are running ONE iteration of a TextGrad-guided optimization loop.
+      This is SMARTER than random UCB1 — you get a pre-analyzed proposal based on
+      trajectory history and failure analysis. Your job: apply it, evaluate, decide.
+
+      ## Step 1: Generate Proposal via Prompt Optimizer
+      Run the prompt optimizer to get a research-informed proposal:
+      run_python("
+      import sys, json
+      sys.path.insert(0, 'src')
+      from secretary.prompt_optimizer import run_optimization_cycle
+      from pathlib import Path
+
+      proposal = run_optimization_cycle(
+          base_url='http://localhost:4141',
+          project_root=Path(r'.'),
+          gradients_cache_path=Path('data/textgrad_gradients.json'),
+      )
+      if proposal:
+          # Save for reference
+          from secretary.prompt_optimizer import save_proposal
+          save_proposal(proposal, Path('data/current_proposal.json'))
+          from secretary.prompt_optimizer import format_as_agent_instructions
+          print(format_as_agent_instructions(proposal))
+      else:
+          print('NO_PROPOSAL: Could not generate proposal. Run eval first to get failure data.')
+      ")
+
+      If the output says NO_PROPOSAL, run eval once to generate data:
+        run_python("
+        import subprocess
+        r = subprocess.run(
+            ['python', 'scripts/run_eval.py', '--output-json', 'data/autoresearch_eval_0.json'],
+            capture_output=True, text=True, timeout=600, cwd=r'.',
+        )
+        print(r.stdout[-500:] if r.stdout else 'No output')
+        print(r.stderr[-300:] if r.stderr else '')
+        ")
+      Then re-run the proposal generation above.
+
+      ## Step 2: Apply the Proposed Change
+      Read the proposal output from Step 1. It tells you:
+        - Which file to modify
+        - Which variable to change
+        - The exact text to add/modify
+
+      Apply the change using file_edit. Rules:
+        - Change only the target file mentioned in the proposal
+        - DO NOT change eval_tasks.json or run_eval.py
+        - DO NOT change config.yaml
+        - Keep the change small and focused (as specified by the proposal)
+
+      ## Step 3: Run Eval 3 Times
+      run_python("
+      import subprocess, re
+      scores = []
+      for i in range(3):
+          r = subprocess.run(
+              ['python', 'scripts/run_eval.py', '--output-json', f'data/autoresearch_eval_{i}.json'],
+              capture_output=True, text=True, timeout=600, cwd=r'.',
+          )
+          m = re.search(r'EVAL_SCORE:\s+([\d.]+)', r.stdout)
+          scores.append(float(m.group(1)) if m else 0.0)
+          print(f'Run {i+1}: {scores[-1]:.3f}')
+      import statistics
+      med = statistics.median(scores)
+      print(f'Median: {med:.3f}')
+      print(f'Scores: {scores}')
+      ")
+
+      ## Step 4: Keep or Discard
+      Read baseline from data/autoresearch_results.tsv (most recent "keep" or "baseline" row).
+      - If median > baseline: STATUS = "keep"
+      - If median <= baseline: STATUS = "discard", REVERT the change using file_edit
+
+      ## Step 5: Log to TSV
+      run_python("
+      from datetime import datetime, timezone
+      import subprocess
+      timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+      commit = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'],
+                              capture_output=True, text=True, cwd=r'.').stdout.strip()
+      # Fill in from your experiment:
+      eval_score = ...     # median score
+      median_val = ...     # same as eval_score
+      status = '...'       # 'keep' or 'discard'
+      dimension = '...'    # target_variable from proposal (e.g. 'prompt_hints')
+      description = '...'  # one-line: 'TextGrad: <proposal description>'
+      run_scores = '...'   # comma-separated scores
+      row = f'{timestamp}\t{commit}\t{eval_score:.3f}\t{median_val:.3f}\t{status}\t{dimension}\t{description}\t{run_scores}'
+      with open('data/autoresearch_results.tsv', 'a') as f:
+          f.write(row + '\n')
+      print(f'Logged: {status} {dimension} {eval_score:.3f}')
+      ")
+
+      ## Step 6: Report
+      Summarize: what the TextGrad analysis found, what proposal was generated,
+      the eval scores, and whether it was kept or discarded.
+
+    tier: oracle
+    schedule: "manual"

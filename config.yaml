@@ -1,0 +1,109 @@
+anthropic_base_url: ${ANTHROPIC_BASE_URL:-http://localhost:4141}
+agent_prefix: true
+reasoning_effort: high   # ""/low/medium/high/max — uses OpenAI endpoint streaming for extended thinking
+data_root: data
+routing:
+  default_tier: medium
+  tiers:
+    low:
+      model: claude-haiku-4.5
+      max_turns: 10
+      description: "Cheap tier \u2014 simple lookups, formatting, quick questions"
+    medium:
+      model: claude-sonnet-4.6
+      max_turns: 25
+      description: "Standard work \u2014 code, email, research, analysis"
+    high:
+      model: claude-opus-4.6
+      max_turns: 30                  # each turn = 1 premium request; efficiency > quantity
+      max_budget_usd: 5.0
+      description: "Complex \u2014 architecture, multi-file, deep analysis"
+watcher:
+  interval_minutes: 30
+  max_runs: 0
+  pause_on_failure: true
+  campaign_file: "campaign.yaml,campaigns/self-build.yaml"
+  max_premium_per_cycle: 0
+  max_retries: 2
+  retry_base_delay: 30.0
+  task_timeout: 600
+  budget_daily_usd: 5.0          # Alert + pause when daily spend reaches $5 USD (~$7.20 CAD)
+  budget_weekly_usd: 25.0         # Alert + pause when weekly spend reaches $25 USD (~$36 CAD)
+  budget_alert_pct: 80            # Alert at 80% of limit
+memory:
+  short_max: 20
+  long_max: 50
+  path: data/memory.json
+currency:
+  display_currency: CAD
+  usd_to_cad_rate: 1.44
+self_improve:
+  auto_promote: true
+  test_timeout: 300
+  tier: medium
+  analysis_cooldown_hours: 0.5
+  stagnation_cooldown_hours: 1.0
+file_tools: true
+goals:
+  enabled: true
+  goals_file: "goals.yaml"
+  review_interval_hours: 8
+  review_model: "claude-haiku-4.5"
+  max_tasks_per_review: 3
+  max_tier: "medium"               # Sonnet for goal tasks; Opus only via oracle escalation
+  max_tasks_per_cycle: 4           # Slightly higher cap now proven stable
+  tool_policy: "supervised"        # Read + local writes (no send)
+  approval_mode: "notify"          # Execute immediately, log for review
+  curriculum_level: 3              # Full autonomy — all priority levels
+  max_active_goals: 5
+  auto_graduate: true              # Layer 26: per-goal trust-based graduation
+
+events:
+  enabled: true
+  gmail_source: true
+  calendar_source: true
+  ooda_enabled: true               # LLM-driven ad-hoc task generation from events
+
+alerts:
+  enabled: true
+  budget_thresholds:
+    dev:
+      daily_usd: 5.0
+      weekly_usd: 25.0
+      warn_pct: 80
+      critical_pct: 90
+    staging:
+      daily_usd: 15.0
+      weekly_usd: 80.0
+      warn_pct: 80
+      critical_pct: 90
+    production:
+      daily_usd: 100.0
+      weekly_usd: 600.0
+      warn_pct: 70
+      critical_pct: 85
+  metrics:
+    token_quota:
+      claude-haiku-4.5: 8000
+      claude-sonnet-4.6: 15000
+      claude-opus-4.6: 25000
+    latency_sla_s:
+      claude-haiku-4.5: 2
+      claude-sonnet-4.6: 4
+      claude-opus-4.6: 8
+    error_rate_threshold: 0.05
+  recipients:
+    warn: ["alice@company.com"]
+    critical: ["alice@company.com", "finance@company.com"]
+    block: ["vp-eng@company.com", "finance@company.com"]
+    warn_slack: ["#cost-monitoring"]
+    critical_slack: ["#cost-monitoring", "#alerts"]
+    block_slack: ["#cost-critical"]
+  channels:
+    email: true
+    slack: true
+    pagerduty: true
+  sla_sec:
+    warn: 300       # 5 min
+    critical: 120   # 2 min
+    block: 60       # 1 min

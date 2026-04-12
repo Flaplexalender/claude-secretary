@@ -1,0 +1,93 @@
+# Benchmark Campaign — Optimizations A/B Testing
+#
+# Tests each optimization's impact on efficiency metrics.
+# Run in two modes to compare:
+#
+# Baseline (all optimizations OFF):
+#   secretary watch --instance baseline --coordinate \
+#     --campaign campaigns/benchmark-optimizations.yaml --max-runs 1
+#   (with config.yaml: optimizations: {selective_tools: false, turn_budget_signal: false, ...})
+#
+# Optimized (all optimizations ON — default):
+#   secretary watch --instance optimized --coordinate \
+#     --campaign campaigns/benchmark-optimizations.yaml --max-runs 1
+#
+# Compare results:
+#   secretary metrics show
+#   secretary metrics benchmarks
+#
+# Each task is designed to exercise a specific optimization:
+# - email-only tasks → selective tools reduces schemas
+# - multi-step tasks → turn budget signal encourages batching
+# - file tasks with scratchpad → context preload saves turns
+# - long tasks → conversation summary compresses history
+# - late-turn tasks → dynamic max_tokens reduces waste
+
+tasks:
+  # ── Email-only (tests selective_tools) ──────────────────
+  - id: bench_email_triage
+    prompt: >
+      Search my Gmail for unread messages from today using gmail_search.
+      Summarize each message in one line: sender, subject, urgency (high/medium/low).
+      Skip newsletters. Group by urgency.
+    tier: high
+    priority: 1
+    skip_if_recent: false
+    timeout: 300
+
+  # ── Calendar-only (tests selective_tools) ───────────────
+  - id: bench_calendar_check
+    prompt: >
+      Check my calendar for today's events and tomorrow's events.
+      List them with time, title, and any conflicts.
+      If there are back-to-back meetings, note them.
+    tier: high
+    priority: 2
+    skip_if_recent: false
+    timeout: 300
+
+  # ── File-only deep work (tests turn_budget_signal + dynamic_max_tokens) ──
+  - id: bench_code_review
+    prompt: >
+      Read src/secretary/direct_agent.py and src/secretary/watcher.py.
+      For each file, identify:
+      1. The top 3 functions by complexity
+      2. Any potential bugs or edge cases
+      3. One concrete optimization opportunity
+      Write your findings to data/scratchpad.md.
+    tier: high
+    priority: 3
+    skip_if_recent: false
+    timeout: 600
+
+  # ── Multi-file task (tests conversation_summary on longer runs) ──
+  - id: bench_full_analysis
+    prompt: >
+      Comprehensive codebase analysis. Read these files in parallel:
+      - src/secretary/direct_agent.py
+      - src/secretary/watcher.py
+      - src/secretary/config.py
+      - src/secretary/coordinator.py
+      - src/secretary/metrics.py
+      - src/secretary/router.py
+      Then:
+      1. Count total lines of code across all files
+      2. List all public functions in each file
+      3. Identify the 3 most complex functions (by cyclomatic complexity estimate)
+      4. Find any TODO/FIXME/HACK comments
+      5. Write a summary to data/scratchpad.md
+    tier: high
+    priority: 4
+    skip_if_recent: false
+    timeout: 900
+
+  # ── Mixed task (email + file — tests partial selective_tools) ──
+  - id: bench_email_to_file
+    prompt: >
+      Search Gmail for the 3 most recent messages.
+      Write a summary of each message to data/scratchpad.md,
+      including sender, subject, date, and a one-line summary of the body.
+    tier: high
+    priority: 5
+    skip_if_recent: false
+    timeout: 300

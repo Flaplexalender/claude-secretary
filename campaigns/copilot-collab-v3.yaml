@@ -1,0 +1,70 @@
+# Copilot Collaboration Campaign v3 — Phase 2: Reliability & Autonomy
+#
+# All bugfixes from v2 verified (353 tests pass). Now targeting reliability:
+# - run_log.jsonl rotation
+# - config hot-reload
+# - self-improvement → run_log integration
+# - Explore remaining Known Issues from cycle-notes.md
+#
+# Run: secretary watch --campaign campaigns/copilot-collab-v3.yaml --interval 5 --max-runs 3
+
+name: copilot-collab-v3
+description: Phase 2 — reliability and autonomy improvements via Opus 4.6
+
+tasks:
+  - id: audit_reliability
+    priority: 1
+    tier: high
+    skip_if_recent: false
+    timeout: 1800
+    prompt: |
+      Autonomous reliability audit with Opus 4.6.
+
+      1. Read workspace/collab/secretary-dropbox.md (check Copilot updates)
+      2. Read plan.md (current operational plan)
+      3. Pick ONE of these unaddressed reliability issues:
+         A) run_log.jsonl has no log rotation — grows unbounded. Analyze run_log.py for a rotation strategy.
+         B) config.yaml changes require restart — analyze watcher.py for hot-reload feasibility.
+         C) self_improve.py results don't log to run_log.jsonl — analyze integration path.
+         D) run_log.py recent(1000) cap limits long-term analytics — analyze O(N) read impact.
+      4. Read the relevant source file(s) and analyze the fix.
+      5. APPEND max 40 lines to research\cycle-notes.md.
+      6. WRITE the dropbox with your analysis and recommended fix.
+
+      RULES: Max 40 lines per cycle entry. Be specific — file, line, exact change needed.
+
+  - id: plan_fix
+    priority: 2
+    depends_on: audit_reliability
+    tier: high
+    skip_if_recent: false
+    timeout: 600
+    prompt: |
+      Read the LAST 60 lines of research\cycle-notes.md.
+      Read research\implementation-log.md (if exists).
+
+      Pick the single highest-priority improvement NOT already in implementation-log.md.
+      Write a concise plan to research\improvement-plan.md:
+      - What to change (file, method, exact lines)
+      - Risk level (LOW/MEDIUM/HIGH)
+      - Expected benefit
+
+      Max 30 lines. If all items are already logged, write "ALL PLANNED — awaiting Copilot review."
+
+  - id: implement_safe
+    priority: 3
+    depends_on: plan_fix
+    tier: high
+    skip_if_recent: false
+    timeout: 600
+    prompt: |
+      Read research\improvement-plan.md.
+      If risk is LOW and the change is ≤20 lines, implement it directly.
+      If risk is MEDIUM or HIGH, just write the plan to the dropbox — don't implement.
+
+      After implementing (or deciding not to):
+      1. APPEND to research\implementation-log.md:
+         Date, file changed, what was done, risk level.
+      2. UPDATE workspace/collab/secretary-dropbox.md with status.
+
+      RULES: Never modify test files. Never change function signatures. Max 20 lines changed.

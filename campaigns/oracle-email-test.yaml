@@ -1,0 +1,40 @@
+# Oracle Email/Calendar Test Campaign
+# Validates oracle ensemble on email/calendar API tool tasks.
+# Success criteria: ≤6.0x premium, all tasks pass.
+# Usage: secretary watch --instance oracle-email --campaign campaigns/oracle-email-test.yaml --max-runs 1
+
+name: oracle-email-test
+description: Oracle ensemble on Gmail + Calendar API tasks (first non-file benchmark)
+
+tasks:
+  # Task 1: Email search + summarize (read-only, deterministic query)
+  - prompt: >
+      Search Gmail for unread messages from today using gmail_search with
+      query "is:unread newer_than:1d". For each message, give a one-line
+      summary: sender, subject, urgency (high/medium/low).
+      Skip newsletters and automated notifications. If no unread mail, say so.
+    tier: oracle
+    id: unread-summary
+    priority: 1
+    skip_if_recent: false
+
+  # Task 2: Calendar awareness (deterministic — calendar_today + calendar_list)
+  - prompt: >
+      Get today's date using calendar_today, then list today's events
+      using calendar_list with today's date as both start and end.
+      Summarize each event in one line: time, title, location (if any).
+      If no events, say "No events today."
+    tier: oracle
+    id: calendar-today
+    priority: 2
+    skip_if_recent: false
+
+  # Task 3: Draft check (simple, deterministic query)
+  - prompt: >
+      Search Gmail for drafts using gmail_search with query "in:drafts".
+      Report how many drafts exist and list each with subject line.
+      If no drafts, say "No drafts found."
+    tier: oracle
+    id: draft-check
+    priority: 3
+    skip_if_recent: false

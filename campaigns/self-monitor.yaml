@@ -1,0 +1,18 @@
+# Campaign: Self-Monitor
+# Secretary monitors its own health and performance.
+# Lightweight — good for running alongside other campaigns.
+# Premium cost: ~0.66x per cycle (all low-tier)
+
+tasks:
+  - prompt: >
+      Review the data/run_log.jsonl file for task failures in the last
+      24 hours. If there are recurring failures, summarize the pattern
+      and suggest fixes. If all tasks are passing, say "All clear."
+    tier: low
+
+  - prompt: >
+      Check the data/memory.json file. Report how many short-term and
+      long-term memories are stored. If any long-term memories seem
+      outdated or contradictory, flag them for cleanup.
+    tier: low
+    skip_if_recent: false

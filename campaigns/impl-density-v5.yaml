@@ -1,0 +1,61 @@
+# Implementation Density v5 — Validate implement hint + 3x file_edit demo
+#
+# Changes from v4:
+#   - Prefix now shows 3× file_edit in one turn (was 2×)
+#   - "implement" category added to _CATEGORY_KEYWORDS and _TASK_HINTS
+#   - Task hint: "Batch ALL file_edits in ONE response, NEVER 1 per turn"
+#
+# Goal: Measure if these changes push implementation tasks from 4.5→6+ t/t
+#
+# IMPORTANT: Tasks target DIFFERENT files to avoid concurrent-edit corruption.
+#
+# Launch (single instance — avoid concurrent edits):
+#   secretary watch --instance impl-v5 --campaign campaigns/impl-density-v5.yaml --max-runs 1
+
+tasks:
+  # Task 1: Multi-file batch edit (same as v4 for comparison)
+  - id: batch_edit_v5
+    prompt: |
+      Add a module-level constant `_VERSION = "1.0.2"` as the SECOND line (after the module docstring) of EACH of these files. Do ALL edits in a single response:
+      - src/secretary/currency.py
+      - src/secretary/history.py
+      - src/secretary/run_log.py
+      - src/secretary/coordinator.py
+      - src/secretary/task_batcher.py
+
+      Then run `python -m pytest tests/ -q --tb=no` to verify nothing breaks.
+      Then use grep_search to confirm all 5 files have _VERSION.
+      Finally revert all changes by removing the _VERSION lines (5 more file_edits).
+
+      ALL file_edits for adding should be in ONE response. ALL file_edits for removing should be in ONE response.
+    tier: high
+    priority: 1
+    timeout: 300
+
+  # Task 2: Implement + test a real feature (no revert needed — tests catch regressions)
+  - id: real_impl_v5
+    prompt: |
+      Implement this small feature in 3 turns:
+
+      Turn 1 (6+ tools): Read src/secretary/metrics.py, tests/test_metrics.py, src/secretary/config.py, data/run_log.jsonl (last 20 lines), and grep for "tools_per_turn" across the codebase.
+      Turn 2 (6+ tools): Add a function `top_k_tasks(k: int = 5) -> list[dict]` to metrics.py that returns the top-K tasks by tools_per_turn from run_log.jsonl. Add 2 test cases for it in tests/test_metrics.py. Run pytest on tests/test_metrics.py. Grep to verify the function exists.
+      Turn 3: Run full pytest suite. Report density stats.
+
+      IMPORTANT: Batch all file_edits + run_command + grep_search in each turn. Never do 1 tool per turn.
+    tier: high
+    priority: 2
+    timeout: 300
+
+  # Task 3: Pipeline — read, refactor, test
+  - id: refactor_pipeline_v5
+    prompt: |
+      Refactor task: Move the `_TASK_HINTS` dict from direct_agent.py into config.py.
+
+      Turn 1 (6+ tools): Read both files + grep for _TASK_HINTS usage across all .py files + read the test files.
+      Turn 2 (6+ tools): Edit config.py to add TASK_HINTS, edit direct_agent.py to import from config, edit any tests. Run pytest. Grep to verify.
+      Turn 3 (6+ tools): If tests fail, fix. If tests pass, revert ALL changes (restore original code). Run pytest again to confirm clean state.
+
+      ALL edits per turn must be batched into ONE response.
+    tier: high
+    priority: 3
+    timeout: 300

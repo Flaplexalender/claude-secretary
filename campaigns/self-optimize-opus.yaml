@@ -1,0 +1,202 @@
+# Self-Optimization Campaign — Secretary instances improve Secretary
+#
+# Mission: Make every Opus 4.6 API call maximally effective.
+# All instances run Opus via proxy with extended thinking.
+#
+# Launch pattern (3 specialized instances):
+#   secretary watch --instance researcher --role researcher --coordinate --campaign campaigns/self-optimize-opus.yaml --max-runs 1
+#   secretary watch --instance builder --role builder --coordinate --campaign campaigns/self-optimize-opus.yaml --max-runs 1
+#   secretary watch --instance tester --role tester --coordinate --campaign campaigns/self-optimize-opus.yaml --max-runs 1
+#
+# Monitor:
+#   secretary metrics instances
+#   secretary metrics show
+
+tasks:
+  # ── Researcher: analyze current efficiency and find improvements ────
+  - id: analyze_turn_waste
+    prompt: |
+      [EFFICIENCY RESEARCH — turn waste analysis]
+
+      Read these files in parallel (batch all reads in turn 1):
+      - src/secretary/direct_agent.py
+      - src/secretary/watcher.py
+      - src/secretary/config.py
+      - data/run_log.jsonl (last 200 lines if it exists)
+      - data/scratchpad.md (if it exists)
+
+      TASK: Analyze for turn waste patterns. Specifically look for:
+      1. Situations where the agent does planning-only turns (text, no tools)
+      2. Places where tool results are too verbose (wasting input tokens)
+      3. Missed opportunities for parallel tool calls
+      4. System prompt inefficiencies (too wordy, wrong emphasis)
+      5. Cases where context is gathered incrementally instead of upfront
+
+      Write findings to data/scratchpad.md with this format:
+      ## Turn Waste Analysis (YYYY-MM-DD)
+      ### Finding 1: [title]
+      - Problem: ...
+      - Impact: X wasted turns/N extra tokens per task
+      - Fix: ... (specific code change)
+      ### Finding 2: ...
+
+      Be SPECIFIC with code locations (file:line) and quantify impact.
+    tier: high
+    role: researcher
+    priority: 1
+    skip_if_recent: false
+    timeout: 600
+
+  - id: analyze_system_prompt
+    prompt: |
+      [SYSTEM PROMPT OPTIMIZATION RESEARCH]
+
+      Read src/secretary/direct_agent.py focusing on _build_system_prompt().
+      Also read config.yaml and data/memory.json (if exists).
+
+      TASK: The system prompt teaches the model to be efficient, but is it
+      actually optimal? Analyze:
+
+      1. Token cost of current system prompt (estimate)
+      2. Which instructions actually change model behavior vs are ignored
+      3. Are there better prompt engineering techniques (few-shot examples,
+         structured output hints, chain-of-thought suppression)?
+      4. Could the prompt be 50% shorter while maintaining effectiveness?
+      5. Should the prompt vary by task type (email vs code vs research)?
+
+      Write CONCRETE prompt alternatives to data/scratchpad.md:
+      ## System Prompt Optimization
+      ### Current cost: ~N tokens
+      ### Proposed alternative (50% shorter):
+      ```
+      [actual prompt text]
+      ```
+      ### Task-specific prompt variants:
+      - Email tasks: [prompt fragment]
+      - Code tasks: [prompt fragment]
+      - Research tasks: [prompt fragment]
+    tier: high
+    role: researcher
+    priority: 2
+    skip_if_recent: false
+    timeout: 600
+
+  - id: analyze_tool_schemas
+    prompt: |
+      [TOOL SCHEMA OPTIMIZATION RESEARCH]
+
+      Read src/secretary/direct_tools.py and src/secretary/_tool_helpers.py.
+      Count the token cost of each tool schema.
+
+      TASK: Tool schemas are sent with EVERY API call. Optimize them:
+
+      1. Which tool descriptions are unnecessarily verbose?
+      2. Can parameter descriptions be shortened without losing clarity?
+      3. Are there tools that are almost never used together?
+      4. What's the total token cost of all 13 tool schemas?
+      5. Could we use tool_choice to force specific tools on specific tasks?
+
+      Write findings to data/scratchpad.md (append, don't overwrite):
+      ## Tool Schema Optimization
+      ### Current total tokens: ~N
+      ### Per-tool token costs:
+      | Tool | Tokens | Suggested reduction |
+      ### Recommended changes:
+      1. ...
+    tier: high
+    role: researcher
+    priority: 3
+    skip_if_recent: false
+    timeout: 600
+
+  # ── Builder: implement the researcher's findings ────────────────────
+  - id: implement_prompt_improvements
+    prompt: |
+      [IMPLEMENT SYSTEM PROMPT OPTIMIZATIONS]
+
+      Read data/scratchpad.md for researcher findings on system prompt optimization.
+      Read src/secretary/direct_agent.py to see current _build_system_prompt().
+
+      TASK: Implement the highest-impact improvements from the research:
+      1. Shorten the system prompt while keeping core efficiency instructions
+      2. Add task-type-specific prompt sections if the research supports it
+      3. Add few-shot examples if the research suggests they'd help
+
+      Rules:
+      - Make changes to src/secretary/direct_agent.py
+      - Run: python -m pytest tests/ -q --tb=short (must pass)
+      - If tests fail, REVERT immediately
+      - Update data/scratchpad.md with what you changed
+
+      NEVER break existing tests.
+    tier: high
+    role: builder
+    depends_on: analyze_system_prompt
+    priority: 5
+    skip_if_recent: false
+    timeout: 900
+
+  - id: implement_tool_optimizations
+    prompt: |
+      [IMPLEMENT TOOL SCHEMA OPTIMIZATIONS]
+
+      Read data/scratchpad.md for researcher findings on tool schemas.
+      Read src/secretary/direct_tools.py.
+
+      TASK: Implement tool schema optimizations:
+      1. Shorten verbose descriptions
+      2. Remove redundant parameter descriptions
+      3. Keep ALL functionality intact — only change descriptions/schemas
+
+      Rules:
+      - Run: python -m pytest tests/ -q --tb=short (must pass)
+      - If tests fail, REVERT immediately
+      - Update data/scratchpad.md with what you changed
+    tier: high
+    role: builder
+    depends_on: analyze_tool_schemas
+    priority: 6
+    skip_if_recent: false
+    timeout: 900
+
+  # ── Tester: validate improvements and measure ──────────────────────
+  - id: test_and_measure
+    prompt: |
+      [VALIDATION AND MEASUREMENT]
+
+      Read data/scratchpad.md for all findings and changes made.
+      Read src/secretary/direct_agent.py and src/secretary/direct_tools.py.
+
+      TASK:
+      1. Run the full test suite: python -m pytest tests/ -q --tb=short
+      2. Count the number of passing/failing tests
+      3. Estimate token savings from changes made:
+         - System prompt token count (before vs after)
+         - Tool schema token count (before vs after)
+         - Projected turns saved per task
+      4. Write a measurement report to data/scratchpad.md:
+
+      ## Optimization Measurements
+      ### Test Results: X passed, Y failed
+      ### Token Savings:
+      - System prompt: before N tokens → after M tokens (K% reduction)
+      - Tool schemas: before N tokens → after M tokens (K% reduction)
+      ### Projected Impact:
+      - Turns saved per task: ~N
+      - Input tokens saved per turn: ~N
+      - Latency reduction: ~N%
+    tier: high
+    role: tester
+    depends_on: implement_prompt_improvements
+    priority: 8
+    skip_if_recent: false
+    timeout: 600
+
+  # ── Shared: health check (any instance) ─────────────────────────
+  - id: health_check
+    prompt: >
+      Quick health check: verify copilot-api proxy responds on localhost:4141,
+      data directory is writable, and config.yaml is valid.
+      If all OK, say "Health: OK". If issues found, describe them.
+    tier: high
+    priority: 0

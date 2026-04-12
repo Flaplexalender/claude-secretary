@@ -1,0 +1,45 @@
+# Self-improvement Campaign — Secretary improves itself using new tools
+#
+# Uses the optimized agent (few-shot prefix, slim prompt, low-density nudge)
+# to find and implement further improvements to its own codebase.
+#
+# Launch:
+#   secretary watch --instance self-improve --campaign campaigns/self-improve-v2.yaml --max-runs 1
+
+tasks:
+  - id: find_bottlenecks
+    prompt: |
+      You are analyzing YOUR OWN codebase to find efficiency bottlenecks.
+
+      Use grep_search + file_read in parallel to analyze:
+      1. grep_search pattern="log\.(info|warning|debug)" path="src/secretary/" — find all logging calls (excessive logging wastes tokens)
+      2. grep_search pattern="await asyncio\.sleep" path="src/secretary/" — find all sleep calls (wasted wall time)
+      3. grep_search pattern="for .* in .*:" path="src/secretary/direct_agent.py" — find loops that could be parallelized
+      4. file_read src/secretary/direct_agent.py (first 100 lines — check imports)
+      5. file_read src/secretary/watcher.py (first 100 lines — check imports)
+      6. run_command: python -c "import sys; print(sys.version)"
+
+      After analysis, write specific improvement proposals to data/scratchpad.md.
+      Each proposal: what to change, expected impact on tools/turn metric, risk level.
+    tier: high
+    priority: 1
+    timeout: 600
+
+  - id: optimize_tool_results
+    prompt: |
+      Analyze how tool results are formatted and whether they waste tokens.
+      
+      Steps (ALL in first response):
+      1. grep_search pattern="_text\(|_error\(" path="src/secretary/direct_tools.py" — find all result formatting
+      2. grep_search pattern="tool_result" path="src/secretary/direct_agent.py" — find how results are processed
+      3. file_read src/secretary/direct_tools.py — full file
+      4. file_read src/secretary/_tool_helpers.py — helper functions
+      5. run_command: python -m pytest tests/test_direct_tools.py -q --tb=no
+
+      Write optimization proposals to data/scratchpad.md:
+      - Are tool results too verbose? (wastes input tokens on next turn)
+      - Can file_read truncate large files smarter?
+      - Can grep_search return fewer bytes per match?
+    tier: high
+    priority: 2
+    timeout: 600

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-commit hook — delegates to Python for cross-platform PII scanning.
+# Install: copy hooks/pre-commit to .git/hooks/pre-commit
+# Bypass:  git commit --no-verify
+exec python hooks/pre-commit.py "$@"

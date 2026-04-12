@@ -1,0 +1,122 @@
+# Stress Test — Meaningful Work + Quality Measurement
+#
+# 3 tasks that do real, verifiable work against the secretary codebase.
+# Purpose: exercise many turns, tool calls, context pruning, and the proxy 400 fix
+# while producing measurable quality output.
+#
+# Run:
+#   secretary watch --instance stress-q --campaign campaigns/stress-test-quality.yaml --max-runs 1
+
+tasks:
+  - id: codebase_audit
+    tier: high
+    timeout: 900
+    skip_if_recent: false
+    prompt: |
+      [CODEBASE AUDIT — thorough quality analysis of secretary source code]
+
+      You are auditing the claude-secretary codebase in src/secretary/.
+      Produce a DETAILED quality report.
+
+      STEP 1 — Inventory (use run_python to scan all .py files):
+      Write a script that reads every .py file in src/secretary/ and reports:
+      - Total lines of code (excluding blanks/comments)
+      - Number of functions/methods per file
+      - Any functions longer than 80 lines (potential refactor targets)
+      - Any unused imports (import X but X never referenced in that file)
+      - Any TODO/FIXME/HACK comments
+
+      STEP 2 — Complexity hotspots:
+      Use file_read on the top 3 largest files. For each, identify:
+      - Most complex function (deepest nesting, most branches)
+      - Any duplicated logic across files
+      - Error handling gaps (bare except, missing error paths)
+
+      STEP 3 — Test coverage gaps:
+      Use run_command: python -m pytest tests/ -q --tb=no
+      Then use grep_search to find functions in src/secretary/direct_agent.py
+      that do NOT have corresponding test functions in tests/.
+
+      STEP 4 — Write report:
+      Write a thorough report to data/stress-test-audit.md with:
+      - Summary statistics
+      - Top 5 quality issues ranked by severity
+      - Top 5 improvement opportunities ranked by impact
+      - Test coverage assessment
+      Format with proper markdown headers and tables.
+
+  - id: implement_improvement
+    tier: high
+    timeout: 900
+    skip_if_recent: false
+    prompt: |
+      [IMPLEMENT — make a real, safe improvement to the secretary codebase]
+
+      PHASE 1 — Read the audit:
+      Read data/stress-test-audit.md (written by the previous task).
+      Pick the SAFEST improvement from the list — something with low risk
+      and clear benefit (dead code removal, fixing a TODO, simplifying logic).
+
+      PHASE 2 — Analyze before changing:
+      Read the TARGET file completely. Understand the surrounding code.
+      Read any related test files.
+
+      PHASE 3 — Implement:
+      Make the change using file_edit. Keep it surgical — one focused improvement.
+
+      PHASE 4 — Verify:
+      Run: python -m pytest tests/ -x -q --tb=short
+      If ANY test fails, REVERT immediately using file_edit and try a different
+      improvement. You get 2 attempts max.
+
+      PHASE 5 — Document:
+      Write to data/stress-test-impl.md:
+      - What you changed and why
+      - Before/after code snippets
+      - Test results (pass count, any failures)
+      - Whether the change was kept or reverted
+
+      RULES:
+      - Do NOT modify test files, config files, or campaign files.
+      - One change only. Small and safe.
+      - Tests MUST pass. No exceptions.
+
+  - id: quality_scorecard
+    tier: high
+    timeout: 600
+    skip_if_recent: false
+    prompt: |
+      [QUALITY SCORECARD — measure and grade the work done in this session]
+
+      Read these files:
+      1. data/stress-test-audit.md — the codebase audit
+      2. data/stress-test-impl.md — the implementation report
+
+      Then run these quality checks:
+      1. run_command: python -m pytest tests/ -q --tb=no — confirm all tests pass
+      2. run_command: python -m pytest tests/ -q --tb=no -x — confirm no flaky tests
+      3. Use run_python to count total test count and verify it matches
+
+      Produce a SCORECARD in data/stress-test-scorecard.md:
+
+      ## Session Quality Scorecard
+
+      | Metric | Value |
+      |--------|-------|
+      | Audit thoroughness (1-10) | ? |
+      | Issues found | ? |
+      | Implementation attempted | yes/no |
+      | Implementation kept (tests pass) | yes/no |
+      | Test count before | ? |
+      | Test count after | ? |
+      | Total turns used (estimate) | ? |
+      | Overall grade (A-F) | ? |
+
+      Grade criteria:
+      - A: Audit found real issues, implementation was safe and kept, tests pass
+      - B: Audit was thorough, implementation attempted but reverted safely
+      - C: Audit was shallow or implementation failed
+      - D: Incomplete work
+      - F: Tests broken
+
+      Also write a 2-3 sentence plain-English summary of what was accomplished.

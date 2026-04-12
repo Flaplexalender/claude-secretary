@@ -1,0 +1,185 @@
+================================================================================
+GOAL STORAGE INVESTIGATION - FINAL SUMMARY
+================================================================================
+
+INVESTIGATION COMPLETE: All existing goal fields, storage locations, and schema 
+have been identified, documented, and verified.
+
+================================================================================
+STORAGE LOCATIONS (3 files)
+================================================================================
+
+1. goals.yaml (6,785 bytes)
+   - Human-authored goal definitions
+   - 7 goals with 24 total sub-goals
+   - YAML format, version-controlled
+
+2. data/goal_state.json (auto-updated JSON state machine)
+   - 16 root keys tracking complete goal lifecycle
+   - 13 sub-goal status entries
+   - 21 pending approvals
+   - 10 reflections, 2 step plans, 15 trust snapshots
+   - Graduation system: 5 history, 14 recommendations, 2 overrides
+
+3. data/run_log.jsonl
+   - Task execution history
+   - Source=goals entries provide detailed task outcomes
+   - Links approvals to execution reports
+
+================================================================================
+GOAL SCHEMA (16 Root Keys)
+================================================================================
+
+Core Tracking:
+  - sub_goal_status (dict[13])      : Status of each sub-goal
+  - step_plans (dict[2])            : Decomposed steps for blocked sub-goals
+  - progress_snapshots (list[2])    : Time-series completion tracking
+
+Feedback & Learning:
+  - reflections (list[10])          : Goal-outcome insights
+  - meta_reflections (list[5])      : System-level learnings
+  - execution_reports (list[14])    : Task outcome details
+
+Approval & Governance:
+  - approval_queue (list[21])       : Pending goal-driven task approvals
+  - trust_snapshots (list[15])      : Meta-learning trust scores
+  - verification_log (list[6])      : Verification check records
+
+Curriculum (Layer 23):
+  - graduation_history (list[5])    : Past curriculum level changes
+  - graduation_recommendations (list[14]) : Recommended progressions
+  - graduation_overrides (dict[2])  : Manual overrides
+
+Admin:
+  - last_reviewed (str)             : ISO timestamp of last review
+  - total_cycles (int)              : Total review cycles
+  - progress_notes (list[2])        : Progress annotations
+  - self_improve_state (dict[6])    : Self-improvement pipeline state
+
+================================================================================
+GOALS DEFINED (7 total)
+================================================================================
+
+1. prefix-survival (P1, in-progress)
+   - Sub-goals: Cost baseline, decision triggering, budget auto-scaling
+   
+2. self-sustaining-autonomy (P2, in-progress)
+   - Sub-goals: Self-triggered execution, scheduling, resource allocation
+   
+3. self-improvement (P3, in-progress)
+   - Sub-goals: Code review automation, testing, architecture improvement
+   
+4. self-harness (P2, in-progress)
+   - Sub-goals: Test framework, evaluation harness, metrics, CI/CD
+   
+5. autoresearch-optimization (P3, in-progress)
+   - Sub-goals: Break eval score plateau via self-optimization
+   
+6. oracle-default (P4, in-progress)
+   - Sub-goals: Oracle ensemble as default billing architecture
+   
+7. stretch-features (P5, not-started)
+   - Sub-goals: Quality-of-life & expansion features
+
+================================================================================
+SUB-GOAL STATUS DISTRIBUTION (24 total)
+================================================================================
+
+Status Breakdown:
+  - Done: 2 (8%)
+  - In-progress: 6 (25%)
+  - Blocked: 5 (21%)
+  - Not-started: 11 (46%)
+
+Blocked Sub-Goals (Need Recovery):
+  - These 5 sub-goals have block_reason documented in step_plans
+  - failure_log contains detailed blocker analysis
+  - Recompositions tracked for each retry attempt
+
+================================================================================
+ISSUES IDENTIFIED & STATUS
+================================================================================
+
+Issue 1: Missing goal_id in Reflections
+  - Severity: Medium
+  - Impact: Reduced traceability of insights to specific goals
+  - Status: IDENTIFIED (backfill needed)
+
+Issue 2: Blocked Sub-Goals Without Recovery Path
+  - Severity: High
+  - Count: 5 blocked sub-goals
+  - Status: IDENTIFIED (requires escalation analysis)
+
+Issue 3: Approval Queue Age
+  - Severity: Low-Medium
+  - Count: 21 pending approvals
+  - Status: IDENTIFIED (expiration policy needed)
+
+================================================================================
+CONFIGURATION STATUS (config.yaml)
+================================================================================
+
+Current Settings:
+  - enabled: false (system is disabled, opt-in)
+  - goals_file: "goals.yaml"
+  - review_interval_hours: 8
+  - review_model: "claude-haiku-4.5"
+  - max_tasks_per_review: 3
+  - max_tier: "medium" (guardrail)
+  - max_tasks_per_cycle: 5 (hard cap)
+  - tool_policy: "read-only" (restricted)
+  - approval_mode: "review" (queue-based)
+  - curriculum_level: 1 (safe mode - only safe goals)
+  - max_active_goals: 3 (focus window)
+  - auto_graduate: false (manual only)
+
+================================================================================
+STATISTICS
+================================================================================
+
+Goals:
+  - Total goals: 7
+  - Total sub-goals: 24
+  - Completion rate: 8%
+  - In-progress rate: 25%
+  - Blocked rate: 21%
+
+Tracking:
+  - Approval queue: 21 pending
+  - Reflections: 10 recorded
+  - Step plans: 2 active
+  - Progress snapshots: 2
+  - Execution reports: 14
+  - Trust snapshots: 15
+
+Graduation:
+  - History: 5 events
+  - Recommendations: 14 pending
+  - Overrides: 2 applied
+
+================================================================================
+VERIFICATION CHECKLIST
+================================================================================
+
+[X] All existing goal fields identified
+[X] Storage locations documented (3 files)
+[X] Current count of goals: 7
+[X] Current count of sub-goals: 24
+[X] Goal schema fully mapped (16 root keys)
+[X] Status distribution calculated (2 done, 6 in-progress, 5 blocked, 11 not-started)
+[X] Storage format: JSON (auto-persisted)
+[X] Issues identified: 3 (missing goal_id, 5 blocked, 21 approval backlog)
+[X] Schema documentation: GOAL_SCHEMA_DOCUMENTATION.md
+
+================================================================================
+NEXT STEPS (RECOMMENDED)
+================================================================================
+
+1. Enable goal system in config.yaml (currently disabled)
+2. Backfill goal_id in reflections for full traceability
+3. Analyze 5 blocked sub-goals and implement recovery strategies
+4. Implement approval queue expiration policy
+5. Review graduation_recommendations and apply curriculum progressions
+6. Monitor trust_snapshots for meta-learning insights
+
+================================================================================

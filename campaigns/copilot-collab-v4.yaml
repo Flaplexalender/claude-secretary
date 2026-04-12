@@ -1,0 +1,60 @@
+# Copilot Collaboration v4 — Phase 2+3 Autonomy
+#
+# Secretary runs this campaign autonomously with Opus 4.6.
+# Copilot monitors scratchpad and drops tasks via secretary-dropbox.md.
+#
+# Key upgrade from v3: continuation protocol, longer turns, self-directed tasks.
+#
+# Usage:
+#   secretary watch --campaign campaigns/copilot-collab-v4.yaml --interval 10 --max-runs 3
+
+tasks:
+  - id: pickup_and_assess
+    tier: high
+    timeout: 1800  # 30 min
+    skip_if_recent: false
+    prompt: |
+      You are the Secretary agent collaborating with Copilot (VS Code, Opus 4.6).
+      Working directory: 
+
+      ## Step 1: Check for Copilot instructions
+      Read these files for tasks dropped by Copilot:
+      - workspace/collab/secretary-dropbox.md
+      - data/scratchpad.md (your own cross-cycle state)
+
+      ## Step 2: Decide what to work on
+      Priority order:
+      1. Anything Copilot explicitly asked for in secretary-dropbox.md
+      2. Continue work from your scratchpad
+      3. Self-directed: pick from the Phase 2/3 items below
+
+      ### Phase 2 — Reliability (remaining items)
+      - Config hot-reload: watcher.py should re-read config.yaml each cycle without restart
+      - run_log recent(N) reads: optimize tail-based reads instead of loading full file
+
+      ### Phase 3 — Deep Autonomy
+      - Dynamic task selection: agent picks its own tasks based on codebase state
+      - Cross-agent memory sync: shared memory format between secretary and copilot
+      - Self-monitoring: detect own failures and adjust behavior
+
+      ## Step 3: Execute
+      - Make changes, run tests (`python -m pytest tests/ -q --tb=short`)
+      - If tests fail, revert immediately
+      - Update data/scratchpad.md with results and next steps
+
+      ## Step 4: Report to Copilot
+      Update workspace/collab/secretary-dropbox.md with:
+      - What you did this cycle
+      - Test results
+      - Questions for Copilot (if any)
+
+  - id: verify_and_log
+    tier: low
+    timeout: 180
+    depends_on: pickup_and_assess
+    skip_if_recent: false
+    prompt: |
+      Quick verification cycle:
+      1. Run `python -m pytest tests/ -q --tb=short` — confirm all tests pass
+      2. Read data/scratchpad.md — confirm it was updated this cycle
+      3. Append a one-line status to data/cycle-report.md

@@ -1,0 +1,29 @@
+# Campaign: Daily Planner
+# Morning routine — calendar overview and task planning.
+# Schedule: weekday mornings only (7am-10am).
+# Premium cost: ~1.33x per cycle (mostly low-tier)
+
+tasks:
+  - prompt: >
+      Check my calendar for today's events using calendar_today.
+      Give me a timeline of events. If there are conflicts or back-to-back
+      meetings, flag them. Note any gaps where I could do focused work.
+    tier: low
+    schedule: "hours:7-10;weekdays"
+
+  - prompt: >
+      Check my calendar for the next 3 days using calendar_list with
+      days_ahead=3. Highlight any deadlines, important meetings, or
+      events that need preparation.
+    tier: low
+
+  - prompt: >
+      Check my Gmail for any unread messages marked important using
+      gmail_search with query "is:unread is:important". Summarize each
+      one and note which need a reply today.
+    tier: low
+
+  - prompt: >
+      Based on today's calendar and any urgent emails, suggest a
+      prioritized task list for the day. Keep it to 3-5 items max.
+    tier: medium

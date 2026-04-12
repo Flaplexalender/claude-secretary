@@ -1,0 +1,95 @@
+# 10x Efficiency Sprint — maximize tools-per-turn to match Copilot
+# Copilot does 5-10+ tool calls per turn. Secretary does 1.3.
+# Goal: Get Secretary to 5+ tools/turn, completing tasks in 2-3 turns max.
+#
+# Research campaign: 3 parallel tasks for deep analysis and implementation.
+# Use: secretary watch --campaign campaigns/10x-efficiency.yaml --max-runs 1
+
+tasks:
+  - id: system_prompt_rewrite
+    prompt: |
+      SYSTEM PROMPT DENSITY REWRITE — Make Opus call 5-10 tools per turn.
+
+      PROBLEM: Secretary averages 1.3 tools/turn. Copilot does 5-10+.
+      The system prompt doesn't enforce density or continuation.
+
+      YOUR TASK — Read and rewrite the system prompt in direct_agent.py:
+
+      1. Read src/secretary/direct_agent.py — find _build_system_prompt() function
+      2. Study the current RULES (BATCH/ACT/COMPACT/DONE)
+      3. Rewrite BOTH prompt modes (ultra-compact and normal) with these principles:
+         - MINIMUM 3 tools per response, TARGET 5-8
+         - NEVER call just 1 tool alone — always batch parallel
+         - CONTINUE calling tools until task is genuinely complete
+         - Text-only response ONLY on absolute final turn
+         - Specific density targets, not vague aspirations
+         - Include turn budget in system prompt: "You have N turns total"
+      4. Also add an anti-redundancy rule: "Files pre-loaded below are already read. Do NOT call file_read on them."
+      5. Write the new prompt to data/scratchpad.md with BEFORE/AFTER comparison
+      6. Then actually edit src/secretary/direct_agent.py with the new prompt
+
+      IMPORTANT: The ultra-compact mode (max_turns <= 3) should be even MORE aggressive.
+      Test by reading the code first, then writing changes.
+    tier: high
+
+  - id: tool_result_fix
+    prompt: |
+      TOOL RESULT HANDLING FIX — Prevent wasted turns from truncation and text mixing.
+
+      TWO CRITICAL BUGS found in Anthropic's own documentation:
+
+      BUG 1: Tool result truncation forces re-reads.
+      - _TOOL_RESULT_FRESH_TURNS = 1 means results from 2 turns ago are truncated to 200 chars
+      - Model then re-reads the same files → wastes entire turns
+      - Fix: increase to 3+ fresh turns so model can reference recent work
+
+      BUG 2: Text mixed with tool_results causes empty responses.
+      - Anthropic docs say: "Adding text blocks immediately after tool_result causes Claude to end turn"
+      - The turn_budget_signal appends {"type": "text"} to tool_results list
+      - This teaches Claude to expect user input after tools → premature end_turn
+      - Fix: Move budget signal to system prompt or separate user message BEFORE the API call
+
+      YOUR TASK:
+      1. Read src/secretary/direct_agent.py — find _TOOL_RESULT_FRESH_TURNS, _TOOL_RESULT_MAX_CHARS
+      2. Read the turn_budget_signal injection code (around line 965-975)
+      3. Read the tool_results user message append code
+      4. Fix both issues:
+         a. Change _TOOL_RESULT_FRESH_TURNS from 1 to 3
+         b. Change _TOOL_RESULT_MAX_CHARS from 200 to 500
+         c. Move budget signal OUT of tool_results list. Instead inject it into system prompt dynamically.
+      5. Write analysis to data/scratchpad.md
+      6. Edit src/secretary/direct_agent.py with fixes
+
+      Reference: https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
+      "Never add text blocks immediately after tool results"
+    tier: high
+    depends_on: system_prompt_rewrite
+
+  - id: force_tools_all_turns
+    prompt: |
+      FORCE TOOL USE ON ALL NON-FINAL TURNS — eliminate planning waste.
+
+      PROBLEM: force_first_tool only applies to turn 0. All other turns can produce
+      text-only responses (planning, acknowledgments, summaries) that waste premium requests.
+
+      CONSTRAINT: tool_choice="required"/"any" CANNOT combine with reasoning_effort on Claude.
+      The API rejects "Thinking may not be enabled when tool_choice forces tool use."
+
+      YOUR TASK:
+      1. Read src/secretary/direct_agent.py — find the _force_first logic (around line 849)
+      2. Read the agent loop exit condition (around line 923)
+      3. Implement these changes:
+         a. Rename _force_first to _force_tools
+         b. Apply tool_choice="required"/"any" on ALL turns EXCEPT the last 1
+         c. Keep the reasoning_effort guard (skip forcing on Claude when reasoning is on)
+         d. For the loop exit: don't break on end_turn if turn < effective_max_turns - 1
+            Instead, if model returns end_turn with text-only early, inject a continuation
+            prompt: "Task is not complete. Continue with tool calls."
+      4. Write analysis to data/scratchpad.md
+      5. Edit src/secretary/direct_agent.py with changes
+      6. Run tests: python -m pytest tests/ -q --tb=short
+
+      This is the highest-leverage single change. Going from 1 forced turn to ALL
+      forced turns could double or triple tools-per-turn.
+    tier: high
+    depends_on: tool_result_fix

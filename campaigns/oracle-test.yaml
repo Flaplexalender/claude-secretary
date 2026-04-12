@@ -1,0 +1,33 @@
+# Oracle Ensemble Test Campaign
+# Tests the oracle architecture: 3 free workers + Opus checkpoints
+# Usage: secretary watch --campaign campaigns/oracle-test.yaml --max-runs 1
+
+name: oracle-test
+description: Test oracle ensemble (free workers + Opus checkpoints)
+
+tasks:
+  - prompt: >
+      Read the file src/secretary/oracle.py and summarize its architecture.
+      What are the key functions and how does the majority voting work?
+    tier: oracle
+    id: read-oracle
+    priority: 1
+    skip_if_recent: false
+
+  - prompt: >
+      Search the secretary codebase for all files that import from router.py.
+      List each file and what it imports.
+    tier: oracle
+    id: search-imports
+    priority: 2
+    skip_if_recent: false
+    depends_on: read-oracle
+
+  - prompt: >
+      Read config.yaml and data/heartbeat.json. Report the current
+      configuration: default tier, reasoning effort,
+      and last heartbeat time.
+    tier: oracle
+    id: config-check
+    priority: 3
+    skip_if_recent: false
