@@ -258,13 +258,16 @@ def build_file_registry(
         command = args.get("command")
         timeout = min(30, max(5, args.get("timeout", 30)))
         if not command:
-            return _error("Missing 'command'. Usage: run_command({command: 'python -m pytest tests/ -q'})")
+            return _error("Missing 'command'. Usage: run_command({command: 'git diff --stat'})")
         # Security: block dangerous commands
         _BLOCKED = {"rm -rf /", "del /s /q c:\\", "format ", "mkfs", "dd if=", ":(){", "fork bomb"}
         cmd_lower = command.lower()
         for blocked in _BLOCKED:
             if blocked.lower() in cmd_lower:
                 return _error(f"Blocked dangerous command pattern: {blocked}")
+        # Never run tests locally — causes VS Code Electron crashes
+        if "pytest" in cmd_lower or "unittest" in cmd_lower:
+            return _error("Test execution blocked. Tests must run via CI (git push → GitHub Actions), not locally. Local pytest crashes VS Code.")
         try:
             proc = await _asyncio.create_subprocess_shell(
                 command,
@@ -413,7 +416,7 @@ def build_file_registry(
         },
         "run_command": {
             "name": "run_command",
-            "description": "Run a shell command. Example: {command: 'python -m pytest tests/ -q --tb=short', timeout: 60}",
+            "description": "Run a shell command. Example: {command: 'git diff --stat', timeout: 30}. NOTE: pytest/unittest are blocked — use CI (git push) for testing.",
             "input_schema": {
                 "type": "object",
                 "properties": {

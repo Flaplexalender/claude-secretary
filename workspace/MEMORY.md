@@ -4,6 +4,7 @@ Curated learnings. Distilled from daily logs. Updated periodically during heartb
 
 ## Lessons Learned
 
+- **NEVER run pytest/tests locally** — causes VS Code Electron crashes. Always use CI: `git add/commit/push` and let GitHub Actions run the test suite. The `run_command` tool blocks pytest.
 - Message prefix: few-shot priming via copilot-api proxy. This is the primary tool-use optimization.
 - Self-improve pipeline must NOT analyze its own failures — creates self-referential loops.
 - Tests with timeout/cancellation semantics need slow mocks (10s). "Faster" mocks break the cancellation path.

@@ -228,8 +228,24 @@ async def _get_test_python(sandbox: Path, source: Path) -> tuple[str, dict[str, 
     return test_python, env
 
 
+def _vscode_is_running() -> bool:
+    """Check if VS Code is running — pytest crashes Electron."""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["tasklist", "/FI", "IMAGENAME eq Code - Insiders.exe", "/NH"],
+            stderr=subprocess.DEVNULL, text=True,
+        )
+        return "Code - Insiders" in out
+    except Exception:
+        # On Linux/macOS or if tasklist fails, assume safe
+        return False
+
+
 async def _run_tests(sandbox: Path, source: Path, timeout: int = 120) -> tuple[bool, str]:
     """Run the full test suite in sandbox, return (passed, output)."""
+    if _vscode_is_running():
+        return False, "SKIPPED: VS Code is running — local pytest crashes Electron. Push to CI instead."
     try:
         test_python, env = await _get_test_python(sandbox, source)
     except RuntimeError as e:
@@ -273,6 +289,8 @@ async def _run_tests_subset(
     sandbox: Path, source: Path, test_files: list[str], timeout: int = 120,
 ) -> tuple[bool, str]:
     """Run a focused subset of tests in sandbox, return (passed, output)."""
+    if _vscode_is_running():
+        return False, "SKIPPED: VS Code is running — local pytest crashes Electron. Push to CI instead."
     try:
         test_python, env = await _get_test_python(sandbox, source)
     except RuntimeError as e:
