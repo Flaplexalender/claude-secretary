@@ -18,12 +18,16 @@ def fix_windows_encoding():
     if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
         try:
             sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+    if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+        try:
             sys.stderr.reconfigure(encoding='utf-8', errors='replace')
         except Exception:
             pass
     
     # Fallback: wrap stdout with TextIOWrapper
-    if sys.stdout.encoding and 'utf' not in sys.stdout.encoding.lower():
+    if sys.stdout and sys.stdout.encoding and 'utf' not in sys.stdout.encoding.lower():
         try:
             sys.stdout = io.TextIOWrapper(
                 sys.stdout.buffer, 
@@ -31,6 +35,10 @@ def fix_windows_encoding():
                 errors='replace',
                 line_buffering=True
             )
+        except Exception:
+            pass
+    if sys.stderr and sys.stderr.encoding and 'utf' not in sys.stderr.encoding.lower():
+        try:
             sys.stderr = io.TextIOWrapper(
                 sys.stderr.buffer, 
                 encoding='utf-8', 
