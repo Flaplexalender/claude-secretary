@@ -660,9 +660,11 @@ async def _retry_with_failure_context(
             fix_prompt += f"{str(change_plan)[:600]}\n"
 
     try:
+        _retry_config = config.model_copy(deep=True)
+        _retry_config.optimizations.dynamic_max_tokens = False
         retry_result = await direct_agent.run(
             task=fix_prompt,
-            config=config,
+            config=_retry_config,
             force_tier=tier,
             tools=tools,
             max_turns=max_turns,
@@ -1209,9 +1211,13 @@ async def improve(
                 return result
 
         _si_tier = config.self_improve.tier
+        # Disable dynamic_max_tokens for self-improve — the agent needs full
+        # token budget on late turns to write large files (tests, modules).
+        _si_config = config.model_copy(deep=True)
+        _si_config.optimizations.dynamic_max_tokens = False
         agent_result = await direct_agent.run(
             task=_full_prompt,
-            config=config,
+            config=_si_config,
             force_tier=_si_tier,
             tools=_tools,
             max_turns=_si_max_turns,
