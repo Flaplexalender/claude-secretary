@@ -62,15 +62,24 @@ goals:
         depends_on: [live-integration-test]
 
   - id: self-improvement
-    description: "Autonomous code review, testing, and architecture improvements"
-    success_criteria: "Secretary autonomously finds and fixes bugs, improves test coverage"
-    priority: 3
+    description: "Long-horizon autonomous self-work — builds entire features, tests, and scaffolding"
+    success_criteria: "Secretary can take a multi-file task (new module + tests + config), execute it end-to-end in sandbox, pass CI, and auto-promote — without being limited to single-line edits"
+    priority: 1
     status: in-progress
     sub_goals:
       - id: failure-analysis
         description: "Feed failed eval traces to LLM for targeted prompt/code fixes"
         status: in-progress
         evidence: "TextGrad-lite module integrated with self-improve pipeline"
+      - id: wide-scope
+        description: "Self-improve agent can write to src/, tests/, goals.yaml, campaigns/ — not just src/secretary/"
+        status: not-started
+        done_criteria: "write_scope and _filter_allowed_changes allow tests/ and config files; agent prompt removes ONE-change constraint"
+      - id: multi-file-scaffolding
+        description: "Agent can create new modules with matching test files in a single run"
+        status: not-started
+        depends_on: [wide-scope]
+        done_criteria: "Self-improve run creates both src/secretary/new_module.py and tests/test_new_module.py, CI passes"
       - id: code-review
         description: "Autonomous code quality review with actionable improvements"
         status: not-started
@@ -78,7 +87,7 @@ goals:
       - id: test-coverage
         description: "Identify and fill test coverage gaps autonomously"
         status: not-started
-        depends_on: [failure-analysis]
+        depends_on: [wide-scope]
 
   - id: self-harness
     description: "Secretary builds and maintains its own test/evaluation harness"

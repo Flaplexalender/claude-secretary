@@ -453,11 +453,13 @@ def _git_commit_promoted(source: Path, changes: list[str], task: str, descriptio
                 cwd=str(source), check=True, capture_output=True, timeout=30,
             )
 
-        # Build concise commit message
+        # Build concise commit message — sanitize for git
         file_summary = ", ".join(Path(f).name for f in (files_to_add + files_to_rm)[:5])
         if len(files_to_add) + len(files_to_rm) > 5:
             file_summary += f" (+{len(files_to_add) + len(files_to_rm) - 5} more)"
-        subject = description[:120] if description else task[:120]
+        raw_subject = description[:120] if description else task[:120]
+        # Remove newlines and non-ASCII that break git commit -m
+        subject = " ".join(raw_subject.replace("\n", " ").replace("\r", "").split())
         msg = (
             f"[self-improve] {subject}\n\n"
             f"Auto-promoted by self-improvement pipeline.\n"
@@ -681,29 +683,33 @@ async def _retry_with_failure_context(
         HealthLog().record("pipeline_error", "warning", f"Sandbox retry failed: {e}", source="self_improve._retry_in_sandbox")
         return None
 def _filter_allowed_changes(changes: list[str]) -> list[str]:
-    """Filter changes to only allowed directory (src/secretary/).
+    """Filter changes to allowed directories.
     
-    Validates that sandbox modifications stay within safe boundaries to prevent
-    the agent from accidentally modifying config files, data files, test files,
-    or other critical infrastructure outside the intended scope.
+    Allowed: src/secretary/, tests/, goals.yaml, campaigns/, workspace/
+    Blocked: data/, _tmp_*, .github/, setup files, pyproject.toml
     """
     allowed = []
     rejected = []
+    _ALLOWED_PREFIXES = ("src/secretary/", "tests/", "campaigns/", "workspace/")
+    _ALLOWED_FILES = ("goals.yaml", "campaign.yaml")
     for change in changes:
         _, rel = change.split(": ", 1)
         rel_posix = rel.replace("\\", "/")
-        # Only allow changes to src/secretary/ directory
-        # SECURITY: Block tests/, _tmp_* temporary files, and data/ directory
         if rel_posix.startswith("_tmp_"):
             rejected.append(change)
-            _log.warning("Sandbox change blocked — temporary file outside scope: %s", change)
+            _log.warning("Sandbox change blocked — temporary file: %s", change)
         elif rel_posix.startswith("data/"):
             rejected.append(change)
             _log.warning("Sandbox change blocked — data/ is off-limits: %s", change)
-        elif rel_posix.startswith("tests/"):
+        elif rel_posix.startswith(".github/"):
             rejected.append(change)
-            _log.warning("Sandbox change blocked — tests/ is read-only: %s", change)
-        elif rel_posix.startswith("src/secretary/"):
+            _log.warning("Sandbox change blocked — .github/ is off-limits: %s", change)
+        elif rel_posix in ("pyproject.toml", "setup.py", "setup.cfg"):
+            rejected.append(change)
+            _log.warning("Sandbox change blocked — build config off-limits: %s", change)
+        elif any(rel_posix.startswith(p) for p in _ALLOWED_PREFIXES):
+            allowed.append(change)
+        elif rel_posix in _ALLOWED_FILES:
             allowed.append(change)
         else:
             rejected.append(change)
@@ -1108,7 +1114,7 @@ async def improve(
             config.data_path,
             workspace_root=sandbox,
             unrestricted_files=False,
-            write_scope="src/secretary",
+            write_scope=None,  # Allow writes to src/, tests/, configs
         )
 
         # Build a contextualized prompt with project structure
@@ -1132,15 +1138,18 @@ async def improve(
         _si_max_turns = max_turns or 8
 
         _full_prompt = (
-            f"## MISSION: Make ONE code change and pass tests\n\n"
-            f"SUCCESS = you called file_edit at least once AND tests pass.\n"
-            f"FAILURE = you never called file_edit (reading/analyzing alone is NOT success).\n"
-            f"BUDGET = {_si_max_turns} turns. Turn 1: read. Turn 2-3: edit. Turn 4: test.\n\n"
-            f"SCOPE (violating = instant task failure):\n"
-            f"- ONLY modify files under src/secretary/\n"
-            f"- NEVER modify, delete, or create files in tests/\n"
-            f"- NEVER create _tmp_*, *.txt, scratch files, or analysis dumps\n"
-            f"- NEVER write to data/, config/, or project root\n\n"
+            f"## MISSION: Complete the task and pass CI tests\n\n"
+            f"SUCCESS = you made meaningful changes AND tests pass.\n"
+            f"FAILURE = no changes made (reading/analyzing alone is NOT success).\n"
+            f"BUDGET = {_si_max_turns} turns. Use them wisely — read, plan, implement, verify.\n\n"
+            f"SCOPE (allowed):\n"
+            f"- src/secretary/ — main source code\n"
+            f"- tests/ — create or modify test files\n"
+            f"- goals.yaml, campaign.yaml — update goal status\n"
+            f"- workspace/ — memory and notes\n\n"
+            f"SCOPE (blocked — instant failure):\n"
+            f"- NEVER create _tmp_*, scratch files, or analysis dumps\n"
+            f"- NEVER write to data/, .github/, pyproject.toml\n\n"
             f"{_target_section}"
             f"KEY SOURCE FILES:\n{_src_listing}\n\n"
             f"TESTS: run_command {{command: 'python -m pytest tests/ -x -q --ignore=tests/test_web_dashboard.py'}}\n\n"
@@ -1168,11 +1177,13 @@ async def improve(
                         except Exception:
                             pass
             _full_prompt += (
-                f"WORKFLOW (strict):\n"
-                f"1. file_read the target file — ONE file only\n"
-                f"2. file_edit to make ONE surgical change (copy EXACT lines as old_string)\n"
-                f"3. run_command to run tests\n\n"
-                f"HARD RULE: If you haven't called file_edit by turn 3, STOP READING and EDIT NOW.\n"
+                f"WORKFLOW:\n"
+                f"1. Read relevant files to understand the codebase\n"
+                f"2. Implement changes — create new files with file_write, modify existing with file_edit\n"
+                f"3. For file_edit: copy EXACT lines from file_read output as old_string\n"
+                f"4. You may create BOTH source files and test files in one run\n"
+                f"5. When done editing, stop — CI will verify your changes automatically\n\n"
+                f"RULE: Make progress on EVERY turn. Don't just read — implement.\n"
             )
             if _file_previews:
                 _full_prompt += f"\nFILE PREVIEWS:{_file_previews}\n"
