@@ -38,7 +38,7 @@ class GmailMessage:
         return False
     
     def get_urgency(self) -> str:
-        """Return 'urgent', 'normal', or 'low' based on subject/sender keywords."""
+        """Return 'urgent' or 'normal' based on subject/snippet keywords."""
         full_text = (self.subject + " " + self.snippet).lower()
         for keyword in _GMAIL_PRIORITY_KEYWORDS:
             if keyword in full_text:
