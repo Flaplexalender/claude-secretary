@@ -681,7 +681,11 @@ async def _retry_with_failure_context(
     except Exception as e:
         _log.warning("Retry failed: %s", e)
         HealthLog().record("pipeline_error", "warning", f"Sandbox retry failed: {e}", source="self_improve._retry_in_sandbox")
-        return Noneallowed directories.
+        return None
+
+
+def _filter_allowed_changes(changes: list[str]) -> list[str]:
+    """Filter changes to allowed directories.
     
     Allowed: src/secretary/, tests/, goals.yaml, campaigns/, workspace/
     Blocked: data/, _tmp_*, .github/, setup files, pyproject.toml
