@@ -228,93 +228,186 @@ async def _get_test_python(sandbox: Path, source: Path) -> tuple[str, dict[str, 
     return test_python, env
 
 
-def _vscode_is_running() -> bool:
-    """Check if VS Code is running — pytest crashes Electron."""
+async def _run_tests_ci(
+    sandbox: Path, source: Path, test_files: list[str] | None = None, timeout: int = 300,
+) -> tuple[bool, str]:
+    """Run tests via GitHub Actions CI instead of locally.
+
+    Copies sandbox changes to a temp branch, pushes, waits for CI result.
+    Returns (passed, output) matching the local _run_tests interface.
+    """
     import subprocess
+    import time as _time
+
+    branch_name = f"test/self-improve-{int(_time.time())}"
+    original_branch = None
+
     try:
-        out = subprocess.check_output(
-            ["tasklist", "/FI", "IMAGENAME eq Code - Insiders.exe", "/NH"],
-            stderr=subprocess.DEVNULL, text=True,
+        # 1. Get current branch name
+        original_branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(source), text=True, timeout=10,
+        ).strip()
+
+        # 2. Create temp branch
+        subprocess.run(
+            ["git", "checkout", "-b", branch_name],
+            cwd=str(source), check=True, capture_output=True, timeout=10,
         )
-        return "Code - Insiders" in out
-    except Exception:
-        # On Linux/macOS or if tasklist fails, assume safe
-        return False
+
+        # 3. Copy sandbox changes to source (overwrite)
+        changes = _detect_changes(source, sandbox)
+        if changes:
+            for change in changes:
+                action, rel_str = change.split(": ", 1)
+                rel = Path(rel_str)
+                if action in ("NEW", "MOD"):
+                    src_file = sandbox / rel
+                    dst_file = source / rel
+                    dst_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(src_file), str(dst_file))
+                elif action == "DEL":
+                    dst_file = source / rel
+                    if dst_file.exists():
+                        dst_file.unlink()
+
+        # 4. Stage and commit
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(source), check=True, capture_output=True, timeout=10,
+        )
+
+        # Check if there's anything to commit
+        status = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=str(source), capture_output=True, timeout=10,
+        )
+        if status.returncode == 0:
+            # No changes to test — pass by default
+            return True, "No changes detected — tests pass by default."
+
+        subprocess.run(
+            ["git", "commit", "-m", f"[ci-test] self-improve validation ({branch_name})"],
+            cwd=str(source), check=True, capture_output=True, timeout=15,
+        )
+
+        # 5. Push temp branch and trigger CI via workflow_dispatch
+        subprocess.run(
+            ["git", "push", "origin", branch_name],
+            cwd=str(source), check=True, capture_output=True, timeout=30,
+        )
+        _log.info("Pushed temp branch %s for CI testing", branch_name)
+
+        # Trigger workflow explicitly (push to non-master branches won't auto-trigger)
+        subprocess.run(
+            ["gh", "workflow", "run", "test.yml", "--ref", branch_name],
+            cwd=str(source), check=True, capture_output=True, timeout=15,
+        )
+
+        # 6. Wait for CI run to appear and complete
+        #    Poll until the run starts (may take a few seconds)
+        run_id = None
+        for _attempt in range(15):
+            await asyncio.sleep(4)
+            try:
+                out = subprocess.check_output(
+                    ["gh", "run", "list", "--branch", branch_name,
+                     "--limit", "1", "--json", "databaseId,status",
+                     "--jq", ".[0]"],
+                    cwd=str(source), text=True, timeout=15,
+                )
+                if out.strip():
+                    import json as _json
+                    run_info = _json.loads(out.strip())
+                    run_id = run_info.get("databaseId")
+                    if run_id:
+                        break
+            except Exception:
+                continue
+
+        if not run_id:
+            return False, "CI run did not start within 60s — could not verify tests."
+
+        # 7. Wait for CI completion
+        _log.info("Waiting for CI run %s to complete...", run_id)
+        proc = await asyncio.create_subprocess_exec(
+            "gh", "run", "watch", str(run_id), "--exit-status",
+            cwd=str(source),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            ci_output = stdout.decode("utf-8", errors="replace") if stdout else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return False, f"CI run timed out after {timeout}s"
+
+        passed = proc.returncode == 0
+
+        # 8. If failed, get failure details
+        if not passed:
+            try:
+                fail_out = subprocess.check_output(
+                    ["gh", "run", "view", str(run_id), "--log-failed"],
+                    cwd=str(source), text=True, timeout=30,
+                )
+                # Extract test failure lines
+                failure_lines = []
+                for line in fail_out.splitlines():
+                    if any(kw in line for kw in ["FAILED", "ERROR", "assert", "AssertionError"]):
+                        failure_lines.append(line.split("\t")[-1] if "\t" in line else line)
+                tail = fail_out.splitlines()[-30:]
+                output = "CI TEST FAILURE:\n" + "\n".join(failure_lines[-20:] + tail)
+            except Exception:
+                output = f"CI tests failed (run {run_id}) but could not fetch failure log."
+        else:
+            output = f"CI tests passed (run {run_id})."
+
+        return passed, output
+
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode("utf-8", errors="replace") if e.stderr else str(e)
+        return False, f"CI test setup failed: {stderr}"
+    except Exception as e:
+        return False, f"CI test error: {e}"
+    finally:
+        # 9. Cleanup: switch back to original branch, delete temp branch
+        try:
+            if original_branch:
+                # Reset any uncommitted changes before switching
+                subprocess.run(
+                    ["git", "checkout", "--", "."],
+                    cwd=str(source), capture_output=True, timeout=10,
+                )
+                subprocess.run(
+                    ["git", "checkout", original_branch],
+                    cwd=str(source), capture_output=True, timeout=10,
+                )
+            subprocess.run(
+                ["git", "branch", "-D", branch_name],
+                cwd=str(source), capture_output=True, timeout=10,
+            )
+            # Delete remote branch
+            subprocess.run(
+                ["git", "push", "origin", "--delete", branch_name],
+                cwd=str(source), capture_output=True, timeout=15,
+            )
+        except Exception as cleanup_err:
+            _log.warning("CI test cleanup failed: %s", cleanup_err)
 
 
-async def _run_tests(sandbox: Path, source: Path, timeout: int = 120) -> tuple[bool, str]:
-    """Run the full test suite in sandbox, return (passed, output)."""
-    if _vscode_is_running():
-        return False, "SKIPPED: VS Code is running — local pytest crashes Electron. Push to CI instead."
-    try:
-        test_python, env = await _get_test_python(sandbox, source)
-    except RuntimeError as e:
-        return False, str(e)
-
-    proc = await asyncio.create_subprocess_exec(
-        test_python, "-m", "pytest", "tests/", "-v", "--tb=short",
-        "--ignore=tests/test_web_dashboard.py",
-        cwd=str(sandbox),
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        output = stdout.decode("utf-8", errors="replace")
-        stderr_output = stderr.decode("utf-8", errors="replace") if stderr else ""
-        # Combine stderr into output if tests failed (captures exception tracebacks)
-        if proc.returncode != 0 and stderr_output:
-            output = output + "\n--- STDERR ---\n" + stderr_output
-        # Extract failure details if tests failed
-        if proc.returncode != 0:
-            failure_lines = []
-            for line in output.splitlines():
-                if any(kw in line for kw in ["FAILED", "ERROR", "assert", "AssertionError", "Traceback"]):
-                    failure_lines.append(line)
-            # Keep last 30 lines to capture full stack trace
-            tail_lines = output.splitlines()[-30:]
-            test_failure_output = "\n".join(failure_lines[-20:] + tail_lines) if failure_lines else output
-            # Format complete failure output for reflection context: TEST FAILURE OUTPUT
-            # Include both stdout and stderr for LLM visibility
-            output = f"TEST FAILURE OUTPUT:\n{test_failure_output}"
-        return proc.returncode == 0, output
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        return False, f"Tests timed out after {timeout}s"
+async def _run_tests(sandbox: Path, source: Path, timeout: int = 300) -> tuple[bool, str]:
+    """Run the full test suite via CI (GitHub Actions)."""
+    return await _run_tests_ci(sandbox, source, timeout=timeout)
 
 
 async def _run_tests_subset(
-    sandbox: Path, source: Path, test_files: list[str], timeout: int = 120,
+    sandbox: Path, source: Path, test_files: list[str], timeout: int = 300,
 ) -> tuple[bool, str]:
-    """Run a focused subset of tests in sandbox, return (passed, output)."""
-    if _vscode_is_running():
-        return False, "SKIPPED: VS Code is running — local pytest crashes Electron. Push to CI instead."
-    try:
-        test_python, env = await _get_test_python(sandbox, source)
-    except RuntimeError as e:
-        return False, str(e)
-
-    proc = await asyncio.create_subprocess_exec(
-        test_python, "-m", "pytest", *test_files, "-v", "--tb=short",
-        cwd=str(sandbox),
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        output = stdout.decode("utf-8", errors="replace")
-        stderr_output = stderr.decode("utf-8", errors="replace") if stderr else ""
-        # Combine stderr into output if tests failed (captures exception tracebacks)
-        if proc.returncode != 0 and stderr_output:
-            output = output + "\n--- STDERR ---\n" + stderr_output
-        return proc.returncode == 0, output
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        return False, f"Focused tests timed out after {timeout}s"
+    """Run tests via CI. The full suite runs regardless (CI doesn't support subsets)."""
+    return await _run_tests_ci(sandbox, source, test_files=test_files, timeout=timeout)
 
 
 def _promote_changes(source: Path, sandbox: Path, changes: list[str]) -> None:

@@ -340,7 +340,8 @@ async def test_improve_agent_makes_changes_tests_pass(tmp_path: Path):
 
     with patch("secretary.self_improve.direct_agent.run", side_effect=fake_agent_run), \
          patch("secretary.self_improve.build_tool_registry", return_value={}), \
-         patch("secretary.self_improve._run_tests", return_value=(True, "4 passed")):
+         patch("secretary.self_improve._run_tests", return_value=(True, "4 passed")), \
+         patch("secretary.self_improve._run_tests_subset", return_value=(True, "pass")):
 
         result = await improve(
             task="Improve hello function",
@@ -375,6 +376,7 @@ async def test_improve_auto_promote_on_pass(tmp_path: Path):
     with patch("secretary.self_improve.direct_agent.run", side_effect=fake_agent_run), \
          patch("secretary.self_improve.build_tool_registry", return_value={}), \
          patch("secretary.self_improve._run_tests", return_value=(True, "4 passed")), \
+         patch("secretary.self_improve._run_tests_subset", return_value=(True, "pass")), \
          patch("secretary.self_improve._git_commit_promoted", return_value="abc123"):
 
         result = await improve(
@@ -417,7 +419,8 @@ async def test_improve_auto_promote_rollback_on_post_test_fail(tmp_path: Path):
 
     with patch("secretary.self_improve.direct_agent.run", side_effect=fake_agent_run), \
          patch("secretary.self_improve.build_tool_registry", return_value={}), \
-         patch("secretary.self_improve._run_tests", side_effect=fake_run_tests):
+         patch("secretary.self_improve._run_tests", side_effect=fake_run_tests), \
+         patch("secretary.self_improve._run_tests_subset", return_value=(True, "pass")):
 
         result = await improve(
             task="Break hello function",
@@ -448,6 +451,7 @@ async def test_improve_git_commit_failure_rolls_back(tmp_path: Path):
     with patch("secretary.self_improve.direct_agent.run", side_effect=fake_agent_run), \
          patch("secretary.self_improve.build_tool_registry", return_value={}), \
          patch("secretary.self_improve._run_tests", return_value=(True, "4 passed")), \
+         patch("secretary.self_improve._run_tests_subset", return_value=(True, "pass")), \
          patch("secretary.self_improve._git_commit_promoted", return_value=None):
 
         result = await improve(
@@ -524,7 +528,8 @@ async def test_improve_tests_fail_no_promote(tmp_path: Path):
 
     with patch("secretary.self_improve.direct_agent.run", side_effect=fake_agent_run), \
          patch("secretary.self_improve.build_tool_registry", return_value={}), \
-         patch("secretary.self_improve._run_tests", return_value=(False, "ERRORS! SyntaxError")):
+         patch("secretary.self_improve._run_tests", return_value=(False, "ERRORS! SyntaxError")), \
+         patch("secretary.self_improve._run_tests_subset", return_value=(False, "ERRORS! SyntaxError")):
 
         result = await improve(
             task="Break something",
@@ -623,6 +628,7 @@ async def test_improve_overrides_config_values(tmp_path: Path):
     with patch("secretary.self_improve.direct_agent.run", side_effect=fake_agent_run), \
          patch("secretary.self_improve.build_tool_registry", return_value={}), \
          patch("secretary.self_improve._run_tests", return_value=(True, "passed")), \
+         patch("secretary.self_improve._run_tests_subset", return_value=(True, "pass")), \
          patch("secretary.self_improve._git_commit_promoted", return_value="abc123"):
 
         # Override auto_promote to True even though config says False
