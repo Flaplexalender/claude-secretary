@@ -711,12 +711,6 @@ def _filter_allowed_changes(changes: list[str]) -> list[str]:
             _log.warning("Sandbox change blocked — build config off-limits: %s", change)
         elif any(rel_posix.startswith(p) for p in _ALLOWED_PREFIXES):
             allowed.append(change)
-        elif rel_posix in _ALLOWED_FILES.github/ is off-limits: %s", change)
-        elif rel_posix in ("pyproject.toml", "setup.py", "setup.cfg"):
-            rejected.append(change)
-            _log.warning("Sandbox change blocked — build config off-limits: %s", change)
-        elif any(rel_posix.startswith(p) for p in _ALLOWED_PREFIXES):
-            allowed.append(change)
         elif rel_posix in _ALLOWED_FILES:
             allowed.append(change)
         else:
@@ -1115,7 +1109,7 @@ async def improve(
         # 1. Copy to sandbox
         _copy_to_sandbox(project, sandbox)
         _log.info("Sandbox created: %s", sandbox)
-None,  # Allow writes to src/, tests/, configs
+
         # 2. Run agent in sandbox via direct_agent.run()
         _tools = build_tool_registry(
             config.data_path,
@@ -1139,18 +1133,15 @@ None,  # Allow writes to src/, tests/, configs
             _target_section = (
                 f"TARGET FILES (you MUST modify at least one of these):\n{_tf_list}\n"
                 f"Read these files FIRST, then make a focused change.\n"
-                f"Do NOT mComplete the task and pass CI tests\n\n"
+                f"Do NOT modify files outside this list unless absolutely necessary.\n\n"
+            )
+
+        _si_max_turns = max_turns or 8
+
+        _full_prompt = (
+            f"## MISSION: Complete the task and pass CI tests\n\n"
             f"SUCCESS = you made meaningful changes AND tests pass.\n"
             f"FAILURE = no changes made (reading/analyzing alone is NOT success).\n"
-            f"BUDGET = {_si_max_turns} turns. Use them wisely — read, plan, implement, verify.\n\n"
-            f"SCOPE (allowed):\n"
-            f"- src/secretary/ — main source code\n"
-            f"- tests/ — create or modify test files\n"
-            f"- goals.yaml, campaign.yaml — update goal status\n"
-            f"- workspace/ — memory and notes\n\n"
-            f"SCOPE (blocked — instant failure):\n"
-            f"- NEVER create _tmp_*, scratch files, or analysis dumps\n"
-            f"- NEVER write to data/, .github/, pyproject.tomlne is NOT success).\n"
             f"BUDGET = {_si_max_turns} turns. Use them wisely — read, plan, implement, verify.\n\n"
             f"SCOPE (allowed):\n"
             f"- src/secretary/ — main source code\n"
@@ -1178,13 +1169,11 @@ None,  # Allow writes to src/, tests/, configs
             _file_previews = ""
             if target_files:
                 for tf in target_files[:2]:
-                    _fp = :\n"
-                f"1. Read relevant files to understand the codebase\n"
-                f"2. Implement changes — create new files with file_write, modify existing with file_edit\n"
-                f"3. For file_edit: copy EXACT lines from file_read output as old_string\n"
-                f"4. You may create BOTH source files and test files in one run\n"
-                f"5. When done editing, stop — CI will verify your changes automatically\n\n"
-                f"RULE: Make progress on EVERY turn. Don't just read — implement
+                    _fp = sandbox / tf
+                    if _fp.exists() and _fp.is_file():
+                        try:
+                            _lines = _fp.read_text(encoding="utf-8", errors="replace").splitlines()
+                            _preview = "\n".join(_lines[:200])
                             _file_previews += f"\n### {tf} (first 200 lines)\n```python\n{_preview}\n```\n"
                         except Exception:
                             pass
