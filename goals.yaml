@@ -73,11 +73,13 @@ goals:
         evidence: "TextGrad-lite module integrated with self-improve pipeline"
       - id: wide-scope
         description: "Self-improve agent can write to src/, tests/, goals.yaml, campaigns/ — not just src/secretary/"
-        status: not-started
+        status: done
+        evidence: "write_scope=None, _filter_allowed_changes allows src/secretary/, tests/, campaigns/, workspace/, goals.yaml, campaign.yaml. Commits be16235+6e8d161."
         done_criteria: "write_scope and _filter_allowed_changes allow tests/ and config files; agent prompt removes ONE-change constraint"
       - id: multi-file-scaffolding
         description: "Agent can create new modules with matching test files in a single run"
-        status: not-started
+        status: done
+        evidence: "Run 6 created tests/test_encoding_fix.py + modified src/secretary/encoding_fix.py in a single run. Commit 47f25a8."
         depends_on: [wide-scope]
         done_criteria: "Self-improve run creates both src/secretary/new_module.py and tests/test_new_module.py, CI passes"
       - id: code-review
@@ -86,7 +88,8 @@ goals:
         depends_on: [failure-analysis]
       - id: test-coverage
         description: "Identify and fill test coverage gaps autonomously"
-        status: not-started
+        status: in-progress
+        evidence: "Run 5: test_tool_budget_limits.py (e72d28c). Run 6: test_encoding_fix.py (47f25a8). 12 modules still untested."
         depends_on: [wide-scope]
 
   - id: self-harness
