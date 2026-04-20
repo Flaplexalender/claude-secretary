@@ -913,8 +913,13 @@ async def run(
     # Determine API path: OpenAI endpoint (reasoning or non-Claude models) or Anthropic SDK.
     # GPT-4.1, GPT-4o etc. MUST use the OpenAI endpoint; Claude models use Anthropic SDK
     # unless reasoning_effort is set (which requires the OpenAI endpoint).
+    # Claude Haiku 4.5 does NOT support reasoning_effort — skip it there and fall back
+    # to the normal Anthropic SDK path. Otherwise the proxy returns HTTP 400
+    # ``invalid_reasoning_effort`` on every call.
     _is_non_claude = not routing.model.startswith("claude-")
-    _use_openai = bool(config.reasoning_effort) or _is_non_claude
+    _supports_reasoning = not routing.model.startswith("claude-haiku")
+    _reasoning_active = bool(config.reasoning_effort) and _supports_reasoning
+    _use_openai = _reasoning_active or _is_non_claude
     if _use_openai:
         _base_url = _interpolate_env(config.anthropic_base_url).rstrip("/")
         _oai_tools = _to_openai_tools(tool_schemas) if tool_schemas else []
@@ -923,6 +928,11 @@ async def run(
         else:
             log.info("Using OpenAI endpoint with reasoning_effort=%s", config.reasoning_effort)
     else:
+        if config.reasoning_effort and not _supports_reasoning:
+            log.info(
+                "Ignoring reasoning_effort=%s for %s (model does not support extended thinking)",
+                config.reasoning_effort, routing.model,
+            )
         client = _build_client(config)
 
     # Deep tier always uses the message prefix for extended sessions.
@@ -1047,8 +1057,9 @@ async def run(
                             "messages": oai_messages,
                             "max_tokens": _max_tokens,
                         }
-                        # Only add reasoning_effort for Claude models (not GPT-4.1 etc.)
-                        if config.reasoning_effort and not _is_non_claude:
+                        # Only add reasoning_effort for Claude models that support it
+                        # (Haiku 4.5 rejects it with HTTP 400).
+                        if _reasoning_active:
                             payload["reasoning_effort"] = config.reasoning_effort
                         if _oai_tools:
                             payload["tools"] = _oai_tools

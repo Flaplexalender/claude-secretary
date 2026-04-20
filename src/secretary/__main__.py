@@ -25,6 +25,30 @@ from typing import Any
 from .config import SecretaryConfig
 
 
+def _resolve_campaign_files(raw: str | Path | None) -> list[Path]:
+    """Split a comma-separated campaign-file setting into individual paths.
+
+    Secretary supports either a single path (``campaign.yaml``) or a
+    comma-separated list (``campaign.yaml,campaigns/self-build.yaml``).
+    The Watcher handles the split internally, but CLI commands that probe
+    campaign state (``status``, ``test``, ``watch`` preflight) need the
+    same logic so they don't treat the literal comma-joined string as one
+    missing filename.
+    """
+    if raw is None:
+        return []
+    return [Path(part.strip()) for part in str(raw).split(",") if part.strip()]
+
+
+def _first_existing_campaign(raw: str | Path | None) -> Path | None:
+    """Return the first existing path from a comma-separated campaign setting,
+    or ``None`` if none of the candidates exist on disk."""
+    for candidate in _resolve_campaign_files(raw):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _setup_logging(verbose: bool = False) -> None:
     """Configure root logger with timestamp format. Debug level when verbose."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -472,14 +496,17 @@ async def _cmd_watch(args: argparse.Namespace, config: SecretaryConfig) -> None:
     if args.max_retries is not None:
         config.watcher.max_retries = args.max_retries
 
-    # Preflight: validate campaign before entering the loop
+    # Preflight: validate every existing campaign file before entering the loop.
+    # ``campaign_raw`` may be a comma-separated list (e.g. ``a.yaml,b.yaml``),
+    # so probe each candidate individually.
     campaign_raw = args.campaign or config.watcher.campaign_file
-    campaign_path = Path(campaign_raw)
-    if campaign_path.exists():
+    for campaign_path in _resolve_campaign_files(campaign_raw):
+        if not campaign_path.exists():
+            continue
         from .campaign import validate_campaign
         result = validate_campaign(str(campaign_path))
         if not result.valid:
-            print("Campaign validation failed:", file=sys.stderr)
+            print(f"Campaign validation failed for {campaign_path}:", file=sys.stderr)
             for err in result.errors:
                 print(f"  ✗ {err}", file=sys.stderr)
             sys.exit(1)
@@ -611,9 +638,16 @@ def _cmd_status(config: SecretaryConfig) -> None:
     else:
         print(f"MCP tools: ✗ disabled (no Google auth)")
 
-    # Check campaign
-    campaign = Path(config.watcher.campaign_file)
-    print(f"Campaign: {'✓ ' + str(campaign) if campaign.exists() else '✗ no campaign file'}")
+    # Check campaign (may be a comma-separated list — show first existing entry)
+    campaign_candidates = _resolve_campaign_files(config.watcher.campaign_file)
+    campaign = _first_existing_campaign(config.watcher.campaign_file)
+    if campaign is not None:
+        extras = [str(p) for p in campaign_candidates if p != campaign and p.exists()]
+        extra_str = f" (+{len(extras)} more)" if extras else ""
+        print(f"Campaign: ✓ {campaign}{extra_str}")
+    else:
+        missing = ", ".join(str(p) for p in campaign_candidates) or "(none configured)"
+        print(f"Campaign: ✗ no campaign file ({missing})")
     budget = config.watcher.max_premium_per_cycle
     budget_str = f"{budget}x/cycle" if budget > 0 else "unlimited"
     retry_str = f", retry: {config.watcher.max_retries}x" if config.watcher.max_retries > 0 else ""
@@ -718,9 +752,9 @@ def _cmd_test(config: SecretaryConfig) -> None:
     else:
         _check("Google auth", False, "no token — run: secretary auth")
 
-    # 5. Campaign file — structure validation
-    campaign_path = Path(config.watcher.campaign_file)
-    if campaign_path.exists():
+    # 5. Campaign file — structure validation (any configured path that exists)
+    campaign_path = _first_existing_campaign(config.watcher.campaign_file)
+    if campaign_path is not None:
         from .campaign import validate_campaign
         vr = validate_campaign(campaign_path)
         if vr.valid:
@@ -892,12 +926,15 @@ def _cmd_health(config: SecretaryConfig) -> None:
     else:
         checks.append({"name": "run_log", "ok": True, "detail": "no log yet"})
 
-    # 6. Campaign file exists
-    campaign_path = Path(config.watcher.campaign_file)
-    if campaign_path.exists():
-        checks.append({"name": "campaign", "ok": True, "detail": str(campaign_path)})
+    # 6. Campaign file exists (any of the configured comma-separated paths)
+    campaign_candidates = _resolve_campaign_files(config.watcher.campaign_file)
+    existing = [p for p in campaign_candidates if p.exists()]
+    if existing:
+        detail = ", ".join(str(p) for p in existing)
+        checks.append({"name": "campaign", "ok": True, "detail": detail})
     else:
-        checks.append({"name": "campaign", "ok": False, "detail": f"{campaign_path} not found"})
+        listed = ", ".join(str(p) for p in campaign_candidates) or "(none configured)"
+        checks.append({"name": "campaign", "ok": False, "detail": f"{listed} not found"})
         all_ok = False
 
     # 7. Goal state integrity (if goals enabled)
