@@ -53,13 +53,6 @@ _TIER_MAX_TOKENS: dict[str, int] = {
     "free": 8192,     # GPT-4.1 — small budget, trivial tasks only
 }
 
-# Fix timeout + parallelism to prevent gateway timeouts
-_TOOL_TIMEOUT_S: dict[str, int] = {
-    "run_command": 60,   # FIXED: Reduced from 120s → 60s (prevents 504 timeouts with parallelism=3)
-    "run_python": 60,    # FIXED: Reduced from 120s → 60s (parallelism=3 means no task stalling)
-    "file_read": 15,     # FIXED: Consistent baseline (local I/O)
-    "gmail_search": 20,  # FIXED: Auth token refresh needs buffer
-}
 # Windows encoding fix: force UTF-8 to prevent cp1252 UnicodeEncodeError
 import sys
 import io
@@ -76,37 +69,13 @@ if sys.platform == "win32":
     # Set PYTHONIOENCODING to prevent future encoding breakdowns
     import os
     os.environ['PYTHONIOENCODING'] = 'utf-8'
-# Timeout fix for long research loops: implement checkpoint/resume
-_ENABLE_CHECKPOINTING = True  # ✅ ACTIVE: Checkpoint every 60s for long tasks (P0 timeout fix)
-_MAX_PARALLEL_TOOLS = 3  # ✅ ACTIVE: Reduced from 6→3 to eliminate timeout failures (16.4%→8-10% expected)
-# Status: ✅ VERIFIED (3/3 evolved runs: 0% failures, 0.84-0.88 quality vs baseline 0.68)
-# Impact: Failure rate 16.4% → ~8-10% expected after all fixes applied
+
+# Parallel tool-call throttle.  The system prompt encourages 6+ parallel tool
+# calls per turn.  This cap bounds how many actually run simultaneously —
+# high enough to keep the prompt honest, low enough to avoid thrashing
+# subprocesses (run_python, run_command) and hitting proxy 504s.
+_MAX_PARALLEL_TOOLS = 6
 _STREAMING_TIERS = {"high", "deep"}  # tiers that use streaming API
-# STREAMING FIX: Add read() call before accessing content
-_STREAMING_CONTENT_FIX = True  # Validate stream state before content extraction
-_FORCE_UTF8_ON_WINDOWS = True  # ✅ ACTIVE: Prevents encoding errors on Windows
-
-# ── GMAIL SEARCH: Optimization for unread messages from today ────────────
-# Pre-fetch strategy: Use gmail_search('is:unread newer_than:1d') in parallel
-# with client-side filtering via gmail_filter module to categorize by importance.
-# Result: Skip newsletters/automated notifications, focus on human urgent mail.
-# See: src/secretary/gmail_filter.py for GmailMessage & filter_messages()
-_GMAIL_TODAY_SEARCH = "is:unread newer_than:1d"  # Standard query for today's unread
-
-# ── AUTH token refresh strategy ─────────────────────────────
-# Proactively refresh tokens before expiry to avoid "authentication token expired" errors.
-# Gmail tokens typically expire after 3600s (1 hour), so refresh at 3000s (50 min).
-_AUTH_REFRESH_INTERVAL_S = 3000  # ✅ FIXED: Refresh Gmail tokens at 50-min mark
-_AUTH_RETRY_COUNT = 3  # ✅ FIXED: Retry auth failures up to 3x with exponential backoff
-_ENABLE_TOKEN_VALIDATION = True  # ✅ FIXED: Validate token freshness before tool calls (evolved testing)
-# Gmail API error handling: wrap search in try-catch for TaskGroup exceptions
-_GMAIL_RETRY_ON_ERROR = True  # ✅ FIXED: Retry with exponential backoff on auth/504/TaskGroup errors
-_GMAIL_DRAFT_VALIDATION = True  # ✅ FIXED: Validate draft IDs before read (check for 404)
-_GMAIL_EXCEPTION_WRAPPER = True  # ✅ ACTIVE: Wrap TaskGroup exceptions, prevent unhandled errors (2x failures fixed)
-_GMAIL_STREAM_SAFETY_CHECK = True  # ✅ ACTIVE: Verify stream state before content access (2 failures fixed)
-_ENABLE_AGGRESSIVE_CONTEXT = True  # ✅ ACTIVE: Pre-read project files to reduce file_read turns by 3-4 per task
-_GMAIL_TOKEN_VALIDATION = True  # ✅ FIXED: Validate token freshness before gmail_search (prevent 401 auth errors)
-_SEQUENTIAL_GMAIL_RETRIES = True  # ✅ FIXED: Retry gmail_search sequentially on 401 with token refresh
 
 
 # ── Selective tool exposure ─────────────────────────────────────
@@ -1243,10 +1212,13 @@ async def run(
                 break
 
             if tool_blocks:
+                _tool_sem = asyncio.Semaphore(_MAX_PARALLEL_TOOLS)
+
                 async def _exec_one(block: Any) -> tuple[Any, str]:
-                    log.debug("Calling tool: %s", block.name)
-                    output = await _execute_tool(block.name, block.input, tools or {})
-                    return block, output
+                    async with _tool_sem:
+                        log.debug("Calling tool: %s", block.name)
+                        output = await _execute_tool(block.name, block.input, tools or {})
+                        return block, output
 
                 parallel_results = await asyncio.gather(
                     *[_exec_one(b) for b in tool_blocks]
