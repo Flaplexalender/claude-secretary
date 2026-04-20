@@ -11,6 +11,26 @@ import pytest
 from secretary.cost_monitor import CostAlert, CostMonitor, CostMonitorConfig
 
 
+# Fixed midweek date for "weekly window" tests so they don't fail on
+# Mondays (when hours_ago=24 lands in the previous ISO week). Wednesday
+# 12:00 leaves room for up to 48h of back-dated entries on either side
+# of the week boundary.
+_FAKE_NOW = datetime(2026, 4, 22, 12, 0, 0)  # Wednesday
+
+
+@pytest.fixture
+def frozen_now():
+    """Patch cost_monitor.datetime so .now() returns a fixed Wednesday.
+
+    `fromisoformat` still falls through to the real implementation so
+    entries written via `_entry(...)` are parsed normally.
+    """
+    with patch("secretary.cost_monitor.datetime") as mock_dt:
+        mock_dt.now.return_value = _FAKE_NOW
+        mock_dt.fromisoformat.side_effect = datetime.fromisoformat
+        yield mock_dt
+
+
 @pytest.fixture
 def tmp_data(tmp_path: Path):
     """Create a temp dir with run_log and cost_alerts paths."""
@@ -41,9 +61,11 @@ def _write_entries(path: Path, entries: list[dict]):
             f.write(json.dumps(e) + "\n")
 
 
-def _entry(cost_usd: float = 1.0, premium: float = 1.0, hours_ago: float = 0, success: bool = True) -> dict:
-    """Create a run log entry dict."""
-    ts = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+def _entry(cost_usd: float = 1.0, premium: float = 1.0, hours_ago: float = 0, success: bool = True, now: datetime | None = None) -> dict:
+    """Create a run log entry dict. Pass `now` to anchor the timestamp
+    relative to a frozen clock (else uses real datetime.now)."""
+    anchor = now if now is not None else datetime.now(timezone.utc)
+    ts = anchor - timedelta(hours=hours_ago)
     return {
         "timestamp": ts.isoformat(),
         "cycle": 1,
@@ -82,13 +104,14 @@ def test_daily_spend_today_only(tmp_data):
     assert premium == 2.0
 
 
-def test_weekly_spend_includes_this_week(tmp_data):
+def test_weekly_spend_includes_this_week(tmp_data, frozen_now):
     _, run_log, alert_log = tmp_data
-    # Create entries for today and a few days ago (within week)
+    # Create entries for today and a few days ago (within week).
+    # Anchored to _FAKE_NOW (Wed) so hours_ago=24 lands on Tuesday.
     _write_entries(run_log, [
-        _entry(cost_usd=2.0, hours_ago=0),
-        _entry(cost_usd=3.0, hours_ago=24),    # yesterday
-        _entry(cost_usd=99.0, hours_ago=240),   # 10 days ago — excluded
+        _entry(cost_usd=2.0, hours_ago=0, now=_FAKE_NOW),
+        _entry(cost_usd=3.0, hours_ago=24, now=_FAKE_NOW),    # yesterday
+        _entry(cost_usd=99.0, hours_ago=240, now=_FAKE_NOW),   # 10 days ago — excluded
     ])
     cfg = _make_config(alert_log=str(alert_log))
     mon = CostMonitor(cfg, run_log_path=run_log)
@@ -152,14 +175,16 @@ def test_alert_debounce(tmp_data):
     assert alert2 is None
 
 
-def test_weekly_alert_when_daily_is_ok(tmp_data):
+def test_weekly_alert_when_daily_is_ok(tmp_data, frozen_now):
     """Weekly alert fires even if daily is under threshold."""
     _, run_log, alert_log = tmp_data
-    # Spread across multiple days this week, daily under $10 but weekly over 80% of $12
+    # Spread across multiple days this week, daily under $10 but weekly
+    # over 80% of $12.  Anchored to _FAKE_NOW (Wed) so 48h back lands on
+    # Monday of the same ISO week regardless of when the test runs.
     _write_entries(run_log, [
-        _entry(cost_usd=3.0, hours_ago=0),
-        _entry(cost_usd=3.5, hours_ago=24),
-        _entry(cost_usd=4.0, hours_ago=48),
+        _entry(cost_usd=3.0, hours_ago=0, now=_FAKE_NOW),
+        _entry(cost_usd=3.5, hours_ago=24, now=_FAKE_NOW),
+        _entry(cost_usd=4.0, hours_ago=48, now=_FAKE_NOW),
     ])
     cfg = _make_config(daily=10.0, weekly=12.0, pct=80, alert_log=str(alert_log))
     mon = CostMonitor(cfg, run_log_path=run_log)
