@@ -676,6 +676,7 @@ async def _retry_with_failure_context(
             return None
         raw = _detect_changes(project, sandbox)
         filtered = _filter_allowed_changes(raw)
+        filtered = _reject_dead_binding_changes(filtered, project, sandbox)
         if not filtered:
             return None
         _log.info("Retry produced changes: %s", filtered)
@@ -732,6 +733,252 @@ def _filter_allowed_changes(changes: list[str]) -> list[str]:
     return allowed
 
 
+# ── Dead-binding detector ───────────────────────────────────────
+# Rejects self-improve promotions that only add cargo-culted module-level
+# flag constants (the ``_GMAIL_TOKEN_VALIDATION = True`` pattern from
+# 2026-04-20 cleanup — 14 dead flags with ``"✅ ACTIVE"`` comments but zero
+# call-sites). Only literal-valued bindings are flagged so real code (new
+# functions, classes, logger instances, dict/list containers referenced by
+# runtime code) is never rejected.
+
+# Literal expression types that are "cheap" enough to be suspicious when
+# unused. A constant or a container of constants — nothing with a call
+# expression or attribute access on the right-hand side.
+def _rhs_is_pure_literal(node: "ast.AST") -> bool:
+    """True if `node` is a literal expression (Constant / simple container
+    of literals / negation of a literal). False for anything with a Call,
+    Attribute, Subscript, or Name on the RHS."""
+    import ast as _ast
+    if isinstance(node, _ast.Constant):
+        return True
+    if isinstance(node, _ast.UnaryOp) and isinstance(node.op, (_ast.UAdd, _ast.USub)):
+        return _rhs_is_pure_literal(node.operand)
+    if isinstance(node, (_ast.List, _ast.Tuple, _ast.Set)):
+        return all(_rhs_is_pure_literal(e) for e in node.elts)
+    if isinstance(node, _ast.Dict):
+        return all(
+            (k is None or _rhs_is_pure_literal(k)) and _rhs_is_pure_literal(v)
+            for k, v in zip(node.keys, node.values)
+        )
+    # JoinedStr (f-string) with no FormattedValue children is effectively literal
+    if isinstance(node, _ast.JoinedStr):
+        return all(isinstance(v, _ast.Constant) for v in node.values)
+    return False
+
+
+def _top_level_literal_names(file_content: str) -> dict[str, int]:
+    """Return {name: lineno} for each module-level ``NAME = <literal>``
+    or ``NAME: T = <literal>`` assignment where the RHS is a pure literal.
+
+    Skips dunder names, names in ``__all__``, and tuple-unpacking targets.
+    """
+    import ast as _ast
+    try:
+        tree = _ast.parse(file_content)
+    except SyntaxError:
+        return {}
+    out: dict[str, int] = {}
+    for node in tree.body:
+        if isinstance(node, _ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, _ast.Name) and _rhs_is_pure_literal(node.value):
+                name = target.id
+                if not name.startswith("__") and name != "_":
+                    out[name] = node.lineno
+        elif isinstance(node, _ast.AnnAssign) and isinstance(node.target, _ast.Name):
+            if node.value is not None and _rhs_is_pure_literal(node.value):
+                name = node.target.id
+                if not name.startswith("__") and name != "_":
+                    out[name] = node.lineno
+    return out
+
+
+def _name_referenced_in_tree(
+    name: str, tree_root: Path, exclude: Path | None = None,
+) -> bool:
+    """Grep all .py files under *tree_root* for a standalone-word match of
+    *name*, skipping *exclude* (the file that holds the binding itself).
+    Uses a word-boundary regex against raw text — cheap and catches direct
+    references, attribute-source references (``mod.NAME``), and string
+    references (``getattr(mod, "NAME")``)."""
+    import re as _re
+    pattern = _re.compile(rf"\b{_re.escape(name)}\b")
+    for p in tree_root.rglob("*.py"):
+        if exclude is not None and p.resolve() == exclude.resolve():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if pattern.search(text):
+            return True
+    return False
+
+
+def _name_referenced_in_file_body(name: str, file_content: str) -> bool:
+    """True if *name* appears in *file_content* as anything other than the
+    single LHS binding line — checks usages within the same file (e.g. a
+    flag referenced in an if-statement below its definition)."""
+    import re as _re
+    pattern = _re.compile(rf"\b{_re.escape(name)}\b")
+    hits = pattern.findall(file_content)
+    # Every binding produces at least one hit (its own LHS). Multiple hits
+    # means it's referenced somewhere besides the assignment.
+    return len(hits) >= 2
+
+
+def _find_dead_literal_bindings(
+    changes: list[str], source: Path, sandbox: Path,
+) -> dict[str, list[str]]:
+    """Detect newly-added top-level literal-valued bindings with zero
+    references anywhere in the sandbox tree.
+
+    Returns ``{rel_path: [dead_name, ...]}``. Empty dict means no dead
+    bindings found. Only considers .py files under ``src/secretary/``
+    and ``tests/`` — config and campaign YAML changes are passed through.
+
+    This implements the 2026-04-20 safeguard against cargo-culted flag
+    constants.  See ``shared/snags/general.md`` → "Self-improve cargo-cult
+    flags".
+    """
+    dead_map: dict[str, list[str]] = {}
+    sandbox_src_root = sandbox / "src"
+    for change in changes:
+        action, rel = change.split(": ", 1)
+        rel_posix = rel.replace("\\", "/")
+        if not rel_posix.endswith(".py"):
+            continue
+        if not (rel_posix.startswith("src/secretary/")
+                or rel_posix.startswith("tests/")):
+            continue
+        sandbox_file = sandbox / rel
+        try:
+            sandbox_text = sandbox_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        sandbox_names = _top_level_literal_names(sandbox_text)
+
+        if action == "MOD":
+            source_file = source / rel
+            try:
+                source_text = source_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                source_text = ""
+            source_names = _top_level_literal_names(source_text)
+            new_names = {n: ln for n, ln in sandbox_names.items() if n not in source_names}
+        else:  # NEW
+            new_names = sandbox_names
+
+        if not new_names:
+            continue
+
+        dead: list[str] = []
+        for name in new_names:
+            if _name_referenced_in_file_body(name, sandbox_text):
+                continue
+            # Only traverse sandbox/src for cross-file lookups — avoid noise
+            # from docs/scratchpad.  Check tests/ too so test-only usages count.
+            if sandbox_src_root.exists() and _name_referenced_in_tree(
+                name, sandbox_src_root, exclude=sandbox_file,
+            ):
+                continue
+            sb_tests = sandbox / "tests"
+            if sb_tests.exists() and _name_referenced_in_tree(
+                name, sb_tests, exclude=sandbox_file,
+            ):
+                continue
+            dead.append(name)
+        if dead:
+            dead_map[rel_posix] = dead
+    return dead_map
+
+
+def _reject_dead_binding_changes(
+    changes: list[str], source: Path, sandbox: Path,
+) -> list[str]:
+    """Filter out promotions whose only content is dead literal bindings.
+
+    If every newly-added top-level literal binding in a file is unreferenced
+    AND the file was previously scope-allowed, drop the change and log it.
+    A file with a mix of dead bindings and real edits is *kept* (we can't
+    safely strip lines here), but a health-log warning is recorded.
+    """
+    dead_map = _find_dead_literal_bindings(changes, source, sandbox)
+    if not dead_map:
+        return changes
+
+    # For each flagged file, decide whether the change is ONLY dead bindings.
+    # Heuristic: compare diff byte-size to approximate dead-binding byte-size.
+    # If dead bindings account for >80% of the added bytes, reject the file.
+    import difflib
+    kept: list[str] = []
+    for change in changes:
+        action, rel = change.split(": ", 1)
+        rel_posix = rel.replace("\\", "/")
+        if rel_posix not in dead_map:
+            kept.append(change)
+            continue
+        dead_names = dead_map[rel_posix]
+        sandbox_file = sandbox / rel
+        source_file = source / rel
+        try:
+            sandbox_lines = sandbox_file.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        except OSError:
+            sandbox_lines = []
+        source_lines: list[str] = []
+        if action == "MOD" and source_file.exists():
+            try:
+                source_lines = source_file.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+            except OSError:
+                source_lines = []
+        added_total = 0
+        added_dead_ish = 0
+        diff = list(difflib.ndiff(source_lines, sandbox_lines))
+        for ln in diff:
+            if not ln.startswith("+ "):
+                continue
+            content = ln[2:]
+            added_total += len(content)
+            stripped = content.strip()
+            # Heuristic: line that looks like a flag binding for one of the dead names
+            # (e.g. ``_FOO = True`` or ``_FOO: bool = True``), plus adjacent comments.
+            if stripped.startswith("#") or not stripped:
+                added_dead_ish += len(content)
+                continue
+            for name in dead_names:
+                if stripped.startswith(name + " =") or stripped.startswith(name + ":"):
+                    added_dead_ish += len(content)
+                    break
+        ratio = (added_dead_ish / added_total) if added_total else 0.0
+        if added_total > 0 and ratio >= 0.8:
+            _log.error(
+                "Dead-binding filter: rejecting %s — %d dead literal bindings "
+                "with no call-sites (%s). %.0f%% of added bytes were flag-shaped.",
+                rel_posix, len(dead_names), dead_names[:5], ratio * 100,
+            )
+            HealthLog().record(
+                "dead_binding_rejection", "error",
+                f"Rejected {rel_posix}: {len(dead_names)} dead literal bindings",
+                source="self_improve._reject_dead_binding_changes",
+                details=f"names={dead_names[:10]} ratio={ratio:.2f}",
+            )
+            continue
+        # Mixed real + dead: keep the change, record a warning so humans can audit.
+        _log.warning(
+            "Dead-binding filter: %s (%s) keeps change but contains "
+            "%d unreferenced literal bindings: %s",
+            rel_posix, action, len(dead_names), dead_names[:5],
+        )
+        HealthLog().record(
+            "dead_binding_warning", "warning",
+            f"{rel_posix} has {len(dead_names)} unreferenced literal bindings",
+            source="self_improve._reject_dead_binding_changes",
+            details=f"names={dead_names[:10]}",
+        )
+        kept.append(change)
+    return kept
+
+
 _CHANGE_PLAN_SYSTEM = """\
 You are a code change planner. Given a task description and source file contents, \
 produce a SPECIFIC change plan that another AI agent will execute using file_edit.
@@ -754,6 +1001,11 @@ Rules:
 better logging, edge case fixes.
 - IMPORTANT: If test files are shown below, study them to understand what the \
 tests expect.  Your AFTER code must still pass all existing test assertions.
+- ANTI-CARGO-CULT: Do NOT add module-level flag constants (``_FOO = True``, \
+``_MAX_X = 5``, etc.) unless the SAME change also adds code that READS them. \
+A new constant with no call-site is dead code and will be rejected by the \
+dead-binding filter — it wastes a whole improvement cycle. Every new name \
+must be referenced by runtime logic in the same diff.
 
 Respond with ONLY JSON (no markdown fences):
 {
@@ -1230,12 +1482,21 @@ async def improve(
             result.error = agent_result.error
             return result
 
-        # 3. Detect changes — filter to allowed scope
+        # 3. Detect changes — filter to allowed scope, then reject
+        #    cargo-cult dead-literal-binding promotions (2026-04-20 guard).
         raw_changes = _detect_changes(project, sandbox)
-        result.changed_files = _filter_allowed_changes(raw_changes)
+        scope_filtered = _filter_allowed_changes(raw_changes)
+        result.changed_files = _reject_dead_binding_changes(
+            scope_filtered, project, sandbox,
+        )
         if not result.changed_files:
-            if raw_changes:
+            if raw_changes and not scope_filtered:
                 result.error = f"Agent modified files outside allowed scope: {raw_changes}"
+            elif scope_filtered and not result.changed_files:
+                result.error = (
+                    "All agent changes rejected by dead-binding filter — "
+                    "only unreferenced literal constants were added."
+                )
             else:
                 # CRITICAL FIX: When agent makes no changes, include the agent's reasoning
                 # in the error so self-improve logs capture why the agent stalled
