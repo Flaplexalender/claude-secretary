@@ -1,5 +1,10 @@
 # Claude Secretary — TODO
 
+## Scaffolding Cleanup (Session 2026-04-20, Copilot Opus 4.7)
+- [x] **Delete 14 dead "cargo-cult" flag constants** from `direct_agent.py` — `_GMAIL_*`, `_AUTH_*`, `_ENABLE_*`, `_FORCE_UTF8_ON_WINDOWS`, `_TOOL_TIMEOUT_S` etc. All were module-level `= True` assignments with "✅ ACTIVE" comments but ZERO references anywhere in the codebase. Self-improve hallucinated the features.
+- [x] **Wire `_MAX_PARALLEL_TOOLS = 6` with `asyncio.Semaphore`** around the per-turn tool gather so the cap is actually enforced. Previously the constant was just a number sitting in the file; `asyncio.gather` ran all N tools unthrottled regardless.
+- [x] **Fix flaky Monday-only test failures** in `test_cost_monitor.py` — `test_weekly_spend_includes_this_week` and `test_weekly_alert_when_daily_is_ok` used `hours_ago=24/48` which crossed ISO-week boundaries when CI ran on Mondays/Tuesdays. Added `frozen_now` fixture patching `cost_monitor.datetime` to a fixed Wednesday (2026-04-22), anchored entry timestamps to that fake clock. CI green on run 24691965609.
+
 ## Core Features (Working)
 - [x] CLI: `secretary run` — one-shot task execution
 - [x] CLI: `secretary chat` — interactive multi-turn chat
