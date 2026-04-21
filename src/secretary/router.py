@@ -49,6 +49,15 @@ _LOW_PATTERNS = re.compile(
     r"\b(fix.?typo|rename|format|simple|trivial|quick|"
     r"what.?is|how.?do|explain|list|show)\b", re.I
 )
+# Recon/read-only tasks: "check my X", "review last N", "identify any Y",
+# "compare list of", "look at data/". These are grep+read loops — Haiku
+# handles them at 95%, Sonnet+reasoning_effort=high over-explores at 2%.
+# Sprint v1-v3 data: 49 Sonnet attempts on these, 1 success. Verified 2026-04-21.
+_RECON_PATTERNS = re.compile(
+    r"\b(check.?my|check.?for|look.?at|list.?the|identify.?any|"
+    r"find.?any|count|summarize|summarise|report.?on|recurring|"
+    r"unread|inbox|today'?s|last.?\d+|recent)\b", re.I
+)
 _SCOPE_REDUCERS = re.compile(
     r"\b(just.?this.?file|only.?one|single.?change|small.?fix)\b", re.I
 )
@@ -150,6 +159,14 @@ def estimate_complexity(task: str) -> tuple[str, int, str, str]:
         level = "low"
     else:
         level = "medium"
+
+    # Recon override: read-only "check/list/review/identify" tasks clamp to low tier.
+    # Verified 2026-04-21: Sonnet+reasoning=high has 2% success on these across 49 attempts;
+    # Haiku has 95%. Treat recon as low regardless of score, unless high-complexity keywords
+    # also present (refactor/migrate/etc — keeps override opt-in, not a landmine).
+    if _RECON_PATTERNS.search(task) and not high_hits:
+        level = "low"
+        reasons.append("recon override → low tier")
 
     # confidence: high when score is decisive, medium otherwise
     confidence = "high" if score >= 4 or score <= -1 else "medium"

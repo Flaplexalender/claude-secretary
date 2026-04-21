@@ -484,6 +484,10 @@ def _build_system_prompt(
         parts = [
             f"AI agent. {max_turns} turns total.",
             "RULES: (1) 6+ tool calls per response — all parallel. (2) No text until final turn. (3) grep_search to find, file_edit to change, run_command to test. (4) If data is pre-loaded below, do NOT re-read it with file_read or gmail_search — it's already there. (5) BATCH run_python: do all analysis in ONE script (load data, compute, print) — not 10+ sequential calls.",
+            # STOP-EXPLORING DOCTRINE (borrowed from VS Code Copilot's own system prompt, verified 2026-04-21)
+            # Sonnet+reasoning=high over-explores: 2% success across 49 attempts in sprints v1-v3.
+            # These rules shift the bias from "keep searching" to "act with what you have".
+            "STOP RULES: (a) Avoid redundant searches for information already found. (b) If multiple queries return overlapping results, you have sufficient context — stop searching and act. (c) Once you've identified the relevant files and understand the structure, PROCEED to implementation; do not continue searching. (d) Gather sufficient context to act confidently, then proceed. Do not over-explore when you already have enough. (e) If an approach is blocked, try a DIFFERENT approach — do not brute-force the same approach repeatedly. (f) For analysis tasks: 3-5 tool calls to read the relevant files, then write your answer. Stop.",
         ]
 
     # Task-specific guidance (~20-40 tokens instead of generic ~400)
