@@ -79,13 +79,13 @@ class RoutingConfig(BaseModel):
             description="Standard work — code, email, research",
         ),
         "high": ModelTier(
-            model="claude-opus-4.6",
+            model="claude-opus-4.7",
             max_turns=30,
             max_budget_usd=5.0,
             description="Complex — architecture, multi-file, deep analysis",
         ),
         "deep": ModelTier(
-            model="claude-opus-4.6",
+            model="claude-opus-4.7",
             max_turns=200,
             max_budget_usd=0.0,
             description="Deep work — long-horizon tasks, unlimited exploration, hours-long sessions",
@@ -105,7 +105,7 @@ class RoutingConfig(BaseModel):
         # Ensure "deep" and "oracle" tiers always exist (user config.yaml may omit them)
         if "deep" not in self.tiers:
             self.tiers["deep"] = ModelTier(
-                model="claude-opus-4.6",
+                model="claude-opus-4.7",
                 max_turns=200,
                 max_budget_usd=0.0,
                 description="Deep work — long-horizon tasks, unlimited exploration, hours-long sessions",

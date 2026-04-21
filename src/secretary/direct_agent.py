@@ -539,6 +539,47 @@ def _build_client(config: SecretaryConfig) -> anthropic.Anthropic:
     )
 
 
+# Ordered from weakest to strongest — clamps work by picking
+# the strongest supported level that is <= the requested level.
+_REASONING_LEVELS: tuple[str, ...] = ("low", "medium", "high")
+
+# Per-model maximum supported ``reasoning_effort`` via copilot-api.
+# ``None`` means the model rejects reasoning_effort entirely (HTTP 400).
+# Empirically verified against copilot-api 2026-04-20:
+#   - Haiku 4.5: no reasoning support at all
+#   - Opus 4.7: only "medium" accepted (high/low rejected)
+#   - Sonnet 4/4.5/4.6 + Opus 4.5/4.6: full range
+_MODEL_REASONING_CAP: dict[str, str | None] = {
+    "claude-haiku-4.5": None,
+    "claude-opus-4.7": "medium",
+}
+
+
+def _clamp_reasoning_effort(model: str, requested: str | None) -> str | None:
+    """Return the strongest reasoning_effort ``model`` accepts that is
+    <= ``requested``, or ``None`` if the model doesn't support any.
+
+    Unknown Claude models default to the full range (backwards-compatible).
+    Non-Claude models (GPT-4.1 etc.) are handled separately by the caller
+    and should not invoke this helper.
+    """
+    if not requested:
+        return None
+    cap = _MODEL_REASONING_CAP.get(model, "high")
+    if cap is None:
+        return None
+    # Clamp: take min(requested, cap) by index in _REASONING_LEVELS.
+    try:
+        req_idx = _REASONING_LEVELS.index(requested)
+    except ValueError:
+        return cap  # unknown level — fall back to model cap
+    try:
+        cap_idx = _REASONING_LEVELS.index(cap)
+    except ValueError:
+        return requested
+    return _REASONING_LEVELS[min(req_idx, cap_idx)]
+
+
 def _stream_call(client: anthropic.Anthropic, **kwargs) -> anthropic.types.Message:
     """Execute a streaming API call and return the final Message.
 
@@ -913,12 +954,28 @@ async def run(
     # Determine API path: OpenAI endpoint (reasoning or non-Claude models) or Anthropic SDK.
     # GPT-4.1, GPT-4o etc. MUST use the OpenAI endpoint; Claude models use Anthropic SDK
     # unless reasoning_effort is set (which requires the OpenAI endpoint).
-    # Claude Haiku 4.5 does NOT support reasoning_effort — skip it there and fall back
-    # to the normal Anthropic SDK path. Otherwise the proxy returns HTTP 400
-    # ``invalid_reasoning_effort`` on every call.
+    #
+    # Per-model reasoning_effort support (empirically discovered 2026-04-20):
+    #   - Haiku 4.5: no reasoning_effort at all — proxy returns HTTP 400.
+    #   - Sonnet 4/4.5/4.6: full range (low/medium/high).
+    #   - Opus 4.7: only "medium" accepted — high/low rejected.
+    # The ``_clamp_reasoning_effort`` helper returns the strongest effort the
+    # model accepts, or ``None`` if extended thinking is unsupported.
     _is_non_claude = not routing.model.startswith("claude-")
-    _supports_reasoning = not routing.model.startswith("claude-haiku")
+    _effective_effort = _clamp_reasoning_effort(routing.model, config.reasoning_effort)
+    _supports_reasoning = _effective_effort is not None
     _reasoning_active = bool(config.reasoning_effort) and _supports_reasoning
+    if config.reasoning_effort and _effective_effort != config.reasoning_effort:
+        if _effective_effort is None:
+            log.info(
+                "Ignoring reasoning_effort=%s for %s (model does not support extended thinking)",
+                config.reasoning_effort, routing.model,
+            )
+        else:
+            log.info(
+                "Clamping reasoning_effort %s -> %s for %s (model cap)",
+                config.reasoning_effort, _effective_effort, routing.model,
+            )
     _use_openai = _reasoning_active or _is_non_claude
     if _use_openai:
         _base_url = _interpolate_env(config.anthropic_base_url).rstrip("/")
@@ -926,13 +983,8 @@ async def run(
         if _is_non_claude:
             log.info("Using OpenAI endpoint for non-Claude model: %s", routing.model)
         else:
-            log.info("Using OpenAI endpoint with reasoning_effort=%s", config.reasoning_effort)
+            log.info("Using OpenAI endpoint with reasoning_effort=%s", _effective_effort)
     else:
-        if config.reasoning_effort and not _supports_reasoning:
-            log.info(
-                "Ignoring reasoning_effort=%s for %s (model does not support extended thinking)",
-                config.reasoning_effort, routing.model,
-            )
         client = _build_client(config)
 
     # Deep tier always uses the message prefix for extended sessions.
@@ -1057,10 +1109,10 @@ async def run(
                             "messages": oai_messages,
                             "max_tokens": _max_tokens,
                         }
-                        # Only add reasoning_effort for Claude models that support it
-                        # (Haiku 4.5 rejects it with HTTP 400).
-                        if _reasoning_active:
-                            payload["reasoning_effort"] = config.reasoning_effort
+                        # Only add reasoning_effort for Claude models that support it,
+                        # clamped to the strongest value the model accepts.
+                        if _reasoning_active and _effective_effort:
+                            payload["reasoning_effort"] = _effective_effort
                         if _oai_tools:
                             payload["tools"] = _oai_tools
                             if _force_tools:
@@ -1315,6 +1367,7 @@ async def run(
         "claude-haiku-4.5":  (0.80 / 1e6, 4.00 / 1e6),
         "claude-sonnet-4.6": (3.00 / 1e6, 15.00 / 1e6),
         "claude-opus-4.6":   (15.00 / 1e6, 75.00 / 1e6),
+        "claude-opus-4.7":   (15.00 / 1e6, 75.00 / 1e6),
     }
     _in_rate, _out_rate = _TOKEN_PRICES.get(routing.model, (3.00 / 1e6, 15.00 / 1e6))
     result.cost_usd = result.input_tokens * _in_rate + result.output_tokens * _out_rate

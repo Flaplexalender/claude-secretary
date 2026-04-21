@@ -56,7 +56,7 @@ log = logging.getLogger(__name__)
 FREE_MODELS = ["gpt-4.1", "gpt-4o"]
 
 # Opus for checkpoint reviews
-CHECKPOINT_MODEL = "claude-opus-4.6"
+CHECKPOINT_MODEL = "claude-opus-4.7"
 
 # Minimum agreement threshold for majority vote (2 of 3 = 66%)
 MAJORITY_THRESHOLD = 2

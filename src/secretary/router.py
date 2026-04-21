@@ -22,6 +22,7 @@ TIER_MULTIPLIERS: dict[str, float] = {
     "claude-sonnet-4.6": 1.0,
     "claude-opus-4.5": 3.0,
     "claude-opus-4.6": 3.0,
+    "claude-opus-4.7": 3.0,
     "oracle-ensemble": 0.0,  # Mixed — tracked per-turn in oracle.py
 }
 

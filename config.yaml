@@ -14,7 +14,7 @@ routing:
       max_turns: 25
       description: "Standard work \u2014 code, email, research, analysis"
     high:
-      model: claude-opus-4.6
+      model: claude-opus-4.7
       max_turns: 30                  # each turn = 1 premium request; efficiency > quantity
       max_budget_usd: 5.0
       description: "Complex \u2014 architecture, multi-file, deep analysis"
@@ -86,11 +86,11 @@ alerts:
     token_quota:
       claude-haiku-4.5: 8000
       claude-sonnet-4.6: 15000
-      claude-opus-4.6: 25000
+      claude-opus-4.7: 25000
     latency_sla_s:
       claude-haiku-4.5: 2
       claude-sonnet-4.6: 4
-      claude-opus-4.6: 8
+      claude-opus-4.7: 8
     error_rate_threshold: 0.05
   recipients:
     warn: ["alice@company.com"]
