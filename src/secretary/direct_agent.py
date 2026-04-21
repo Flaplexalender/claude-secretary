@@ -483,7 +483,7 @@ def _build_system_prompt(
     else:
         parts = [
             f"AI agent. {max_turns} turns total.",
-            "RULES: (1) 6+ tool calls per response — all parallel. (2) No text until final turn. (3) grep_search to find, file_edit to change, run_command to test. (4) If data is pre-loaded below, do NOT re-read it with file_read or gmail_search — it's already there.",
+            "RULES: (1) 6+ tool calls per response — all parallel. (2) No text until final turn. (3) grep_search to find, file_edit to change, run_command to test. (4) If data is pre-loaded below, do NOT re-read it with file_read or gmail_search — it's already there. (5) BATCH run_python: do all analysis in ONE script (load data, compute, print) — not 10+ sequential calls.",
         ]
 
     # Task-specific guidance (~20-40 tokens instead of generic ~400)

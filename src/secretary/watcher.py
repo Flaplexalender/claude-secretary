@@ -1441,7 +1441,10 @@ class Watcher:
                                 force_tier=effective_tier,
                                 tools=_effective_tools,
                                 max_turns=12 if task_source in ("goals", "escalation") else None,
-                                max_tool_calls=60 if task_source in ("goals", "escalation") else 20,
+                                # Budget tuning (v3, 2026-04-20): Sonnet analysis tasks consistently
+                                # need 15-25 tool calls (run_python/grep/file_read loops). Default 20
+                                # was too tight — bumped to 35. Goals/escalation keep 75 headroom.
+                                max_tool_calls=75 if task_source in ("goals", "escalation") else 35,
                                 _progress=progress,
                                 strategy_library=self._strategy_library,
                             )
