@@ -130,7 +130,7 @@ def populated_log(tmp_path: Path) -> RunLog:
     ))
     log.append(RunLogEntry(
         timestamp=_ts(3), cycle=0, task="Deploy code",
-        tier="high", model="claude-opus-4.6", success=False,
+        tier="high", model="claude-opus-4.7", success=False,
         output_preview="fail", error="timeout", duration_s=10.0,
         premium_cost=3.0, cost_usd=0.05,
     ))

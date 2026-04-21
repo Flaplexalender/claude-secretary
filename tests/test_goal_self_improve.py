@@ -339,13 +339,13 @@ class TestBuildAnalysisPrompt:
 
     def test_includes_metadata(self):
         entries = [_make_entry(
-            tier="high", model="claude-opus-4.6",
+            tier="high", model="claude-opus-4.7",
             source="goals", goal_id="self-improvement",
             tools_used=["file_read", "run_command"],
         )]
         prompt = _build_analysis_prompt(entries, [])
         assert "high" in prompt
-        assert "claude-opus-4.6" in prompt
+        assert "claude-opus-4.7" in prompt
         assert "goals" in prompt
         assert "self-improvement" in prompt
         assert "file_read" in prompt

@@ -240,7 +240,7 @@ class TestAlwaysOpus:
         config = SecretaryConfig(agent_prefix=True, optimizations=OptimizationConfig(always_opus=True))
         routing = select_model(config, "what is 2+2?")
         assert routing.tier == "high"
-        assert routing.model == "claude-opus-4.6"
+        assert routing.model == "claude-opus-4.7"
         assert "always_opus" in routing.reason
 
     def test_normal_routing_when_paid_mode(self):
@@ -412,7 +412,7 @@ class TestQualityScoring:
     def _make_result(self, **kwargs) -> RunResult:
         defaults = dict(
             task="test task",
-            routing=RoutingDecision(tier="high", model="claude-opus-4.6",
+            routing=RoutingDecision(tier="high", model="claude-opus-4.7",
                                     max_turns=30, max_budget_usd=5.0, reason="test"),
         )
         defaults.update(kwargs)
@@ -549,7 +549,7 @@ class TestPremiumMultiplier:
     def test_routing_has_premium_multiplier(self):
         """RoutingDecision should include premium_multiplier."""
         rd = RoutingDecision(
-            tier="high", model="claude-opus-4.6",
+            tier="high", model="claude-opus-4.7",
             max_turns=25, max_budget_usd=0.0, reason="test",
         )
         assert hasattr(rd, "premium_multiplier")
@@ -586,7 +586,7 @@ class TestRunResultPremium:
     def test_run_result_has_premium_requests(self):
         """RunResult should track premium_requests."""
         rd = RoutingDecision(
-            tier="high", model="claude-opus-4.6",
+            tier="high", model="claude-opus-4.7",
             max_turns=25, max_budget_usd=0.0, reason="test",
         )
         r = RunResult(task="test", routing=rd)
@@ -595,7 +595,7 @@ class TestRunResultPremium:
     def test_premium_calculation(self):
         """premium_requests = turns × multiplier."""
         rd = RoutingDecision(
-            tier="high", model="claude-opus-4.6",
+            tier="high", model="claude-opus-4.7",
             max_turns=25, max_budget_usd=0.0, reason="test",
             premium_multiplier=3.0,
         )

@@ -55,7 +55,7 @@ def test_select_model_forced_tier():
     config = SecretaryConfig()
     decision = select_model(config, "anything", force_tier="high")
     assert decision.tier == "high"
-    assert decision.model == "claude-opus-4.6"
+    assert decision.model == "claude-opus-4.7"
 
 
 def test_select_model_low_tier():
@@ -160,7 +160,7 @@ def test_get_premium_cost_known_models():
     """get_premium_cost should return correct multipliers for known models."""
     assert get_premium_cost("claude-haiku-4.5") == 0.33
     assert get_premium_cost("claude-sonnet-4.6") == 1.0
-    assert get_premium_cost("claude-opus-4.6") == 3.0
+    assert get_premium_cost("claude-opus-4.7") == 3.0
 
 
 def test_get_premium_cost_unknown_model():
@@ -176,7 +176,7 @@ def test_tier_multipliers_dict():
     # Must include our three main Claude tiers
     assert "claude-haiku-4.5" in TIER_MULTIPLIERS
     assert "claude-sonnet-4.6" in TIER_MULTIPLIERS
-    assert "claude-opus-4.6" in TIER_MULTIPLIERS
+    assert "claude-opus-4.7" in TIER_MULTIPLIERS
     # Must include free models
     assert "gpt-4.1" in TIER_MULTIPLIERS
     assert TIER_MULTIPLIERS["gpt-4.1"] == 0.0
@@ -278,7 +278,7 @@ def test_multi_step_task_routes_high_via_select_model():
     config = SecretaryConfig(agent_prefix=False)  # paid mode, no always_opus override
     decision = select_model(config, task)
     assert decision.tier == "high"
-    assert decision.model == "claude-opus-4.6"
+    assert decision.model == "claude-opus-4.7"
     assert decision.max_turns == 30
     assert decision.premium_multiplier == 3.0
 
@@ -295,7 +295,7 @@ def test_multi_step_task_always_opus_free_mode():
     config = SecretaryConfig(agent_prefix=True)
     decision = select_model(config, task)
     assert decision.tier == "high"
-    assert decision.model == "claude-opus-4.6"
+    assert decision.model == "claude-opus-4.7"
     assert "always_opus" in decision.reason
     assert decision.confidence == "high"
     # The underlying complexity should independently be high

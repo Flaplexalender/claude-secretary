@@ -391,7 +391,7 @@ routing:
     medium:
       model: claude-sonnet-4.6
     high:
-      model: claude-opus-4.6
+      model: claude-opus-4.7
 """, encoding="utf-8")
         config = SecretaryConfig.load(config_file)
         assert config.routing.tiers["low"].description == "deep_value"

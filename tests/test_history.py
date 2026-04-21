@@ -60,12 +60,12 @@ def _populated_log(tmp_path: Path) -> RunLog:
     log = RunLog(tmp_path / "run_log.jsonl")
     entries = [
         _entry(task="Check morning emails", tier="low", success=True, duration_s=2.0, premium_cost=0.33),
-        _entry(task="Refactor agent module", tier="high", model="claude-opus-4.6", success=True, duration_s=30.0, premium_cost=3.0, cost_usd=0.05),
+        _entry(task="Refactor agent module", tier="high", model="claude-opus-4.7", success=True, duration_s=30.0, premium_cost=3.0, cost_usd=0.05),
         _entry(task="Fix typo in readme", tier="low", success=True, duration_s=0.5, premium_cost=0.33),
         _entry(task="Analyze campaign data", tier="medium", model="claude-sonnet-4.6", success=False, duration_s=5.0, premium_cost=1.0, error="timeout"),
         _entry(task="Check email for updates", tier="low", success=True, duration_s=1.8, premium_cost=0.33),
         _entry(task="Write integration tests", tier="medium", model="claude-sonnet-4.6", success=True, duration_s=15.0, premium_cost=1.0, cost_usd=0.02),
-        _entry(task="Debug watcher crash", tier="high", model="claude-opus-4.6", success=False, duration_s=45.0, premium_cost=3.0, cost_usd=0.10, error="API rate limit"),
+        _entry(task="Debug watcher crash", tier="high", model="claude-opus-4.7", success=False, duration_s=45.0, premium_cost=3.0, cost_usd=0.10, error="API rate limit"),
     ]
     for e in entries:
         log.append(e)

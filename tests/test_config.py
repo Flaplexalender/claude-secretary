@@ -16,7 +16,7 @@ def test_tier_models():
     config = SecretaryConfig()
     assert config.routing.tiers["low"].model == "claude-haiku-4.5"
     assert config.routing.tiers["medium"].model == "claude-sonnet-4.6"
-    assert config.routing.tiers["high"].model == "claude-opus-4.6"
+    assert config.routing.tiers["high"].model == "claude-opus-4.7"
 
 
 def test_env_interpolation():

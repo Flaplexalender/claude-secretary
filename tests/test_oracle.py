@@ -329,7 +329,7 @@ class TestOracleRun:
             "content": [{"type": "text", "text": "Task looks complete. Good work."}],
             "stop_reason": "end_turn",
             "usage": {"input_tokens": 500, "output_tokens": 200},
-            "model": "claude-opus-4.6",
+            "model": "claude-opus-4.7",
         }
 
         worker_turn = 0
@@ -379,7 +379,7 @@ class TestOracleRun:
             "content": [{"type": "tool_use", "id": "opus1", "name": "file_read", "input": {"path": "correct.py"}}],
             "stop_reason": "tool_use",
             "usage": {"input_tokens": 500, "output_tokens": 200},
-            "model": "claude-opus-4.6",
+            "model": "claude-opus-4.7",
         }
         text_response = {
             "content": [{"type": "text", "text": "Done"}],
@@ -534,7 +534,7 @@ class TestOracleRun:
             "content": [{"type": "text", "text": "The answer is 42."}],
             "stop_reason": "end_turn",
             "usage": {"input_tokens": 500, "output_tokens": 200},
-            "model": "claude-opus-4.6",
+            "model": "claude-opus-4.7",
         }
 
         worker_turn = 0
@@ -603,7 +603,7 @@ class TestOracleRun:
             "content": [{"type": "tool_use", "id": "opus1", "name": "file_read", "input": {"path": "y.py"}}],
             "stop_reason": "tool_use",
             "usage": {"input_tokens": 500, "output_tokens": 200},
-            "model": "claude-opus-4.6",
+            "model": "claude-opus-4.7",
         }
 
         async def mock_worker(*args, **kwargs):
@@ -671,7 +671,7 @@ class TestOracleRun:
             "content": [{"type": "tool_use", "id": "opus1", "name": "file_read", "input": {"path": "fix.py"}}],
             "stop_reason": "tool_use",
             "usage": {"input_tokens": 500, "output_tokens": 200},
-            "model": "claude-opus-4.6",
+            "model": "claude-opus-4.7",
         }
 
         worker_call = {"n": 0}

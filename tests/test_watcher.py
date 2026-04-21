@@ -26,7 +26,7 @@ def test_get_premium_cost_sonnet():
 
 
 def test_get_premium_cost_opus():
-    assert get_premium_cost("claude-opus-4.6") == 3.0
+    assert get_premium_cost("claude-opus-4.7") == 3.0
 
 
 def test_get_premium_cost_unknown_defaults_to_1():
@@ -141,7 +141,7 @@ class _FakeResult:
 
     def __post_init__(self):
         if self.routing is None:
-            self.routing = _FakeRouting(tier="high", model="claude-opus-4.6")
+            self.routing = _FakeRouting(tier="high", model="claude-opus-4.7")
 
 
 def test_budget_cap_skips_excess(tmp_path: Path, expensive_campaign: Path):

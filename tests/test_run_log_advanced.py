@@ -73,7 +73,7 @@ class TestAudit:
         entry = _make_entry(
             task="What is 2+2?",
             tier="high",
-            model="claude-opus-4.6",
+            model="claude-opus-4.7",
             premium_cost=3.0,
             num_turns=1,
             output_preview="4",  # very short
@@ -91,7 +91,7 @@ class TestAudit:
         entry = _make_entry(
             task="Deep architecture review",
             tier="high",
-            model="claude-opus-4.6",
+            model="claude-opus-4.7",
             premium_cost=3.0,
             num_turns=5,
             output_preview="x" * 200,

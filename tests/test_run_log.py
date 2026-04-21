@@ -79,7 +79,7 @@ def test_entry_with_error(tmp_path: Path):
         cycle=1,
         task="failing task",
         tier="high",
-        model="claude-opus-4.6",
+        model="claude-opus-4.7",
         success=False,
         output_preview="",
         error="Connection timeout",
@@ -238,7 +238,7 @@ def test_audit_identifies_downgrade(tmp_path: Path):
     log = RunLog(tmp_path / "log.jsonl")
     log.append(RunLogEntry(
         timestamp="2026-03-11T00:00:00Z", cycle=0, task="What is 2+2?",
-        tier="high", model="claude-opus-4.6", success=True,
+        tier="high", model="claude-opus-4.7", success=True,
         output_preview="4", duration_s=3.0, premium_cost=3.0,
         num_turns=1, tools_used=[],
     ))
@@ -251,7 +251,7 @@ def test_audit_no_downgrade_when_tools_used(tmp_path: Path):
     log = RunLog(tmp_path / "log.jsonl")
     log.append(RunLogEntry(
         timestamp="2026-03-11T00:00:00Z", cycle=0, task="Send email",
-        tier="high", model="claude-opus-4.6", success=True,
+        tier="high", model="claude-opus-4.7", success=True,
         output_preview="Done.", duration_s=5.0, premium_cost=3.0,
         num_turns=2, tools_used=["gmail_send"],
     ))
