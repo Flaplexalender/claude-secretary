@@ -16,6 +16,28 @@
 # Human-authored, version-controlled. Machine state lives in data/goal_state.json.
 
 goals:
+  - id: perf-cost-balance
+    description: "Standing objective: improve build effectiveness and cost-per-task without regressing performance. Runs alongside every other goal."
+    success_criteria: "Rolling 7-day avg cost-per-successful-task trends down OR rolling success-rate trends up, with neither metric regressing more than 2% week-over-week. Never 'done' — re-evaluated every cycle."
+    priority: 1
+    status: in-progress
+    sub_goals:
+      - id: turn-minimization
+        description: "Reduce avg tool-turns per successful task (batch tool calls, prefetch context, eliminate redundant reads)"
+        status: in-progress
+      - id: model-routing-efficiency
+        description: "Keep Haiku handling low-tier, Sonnet medium, Opus only where gains justify 3x-9x cost. Monitor router regrets."
+        status: in-progress
+      - id: cost-per-task-tracking
+        description: "Every self-improve proposal must report expected perf delta and cost delta; reject net-negative changes"
+        status: not-started
+      - id: zero-regression-gate
+        description: "Sandbox must check success-rate on representative task set before promotion; block if regression > 2%"
+        status: not-started
+      - id: prefix-trick-insurance
+        description: "Assume agent-prefix free mode will be blocked — every cycle ask: would this still be affordable on paid? Optimize accordingly."
+        status: in-progress
+
   - id: prefix-survival
     description: "Survive the agent prefix kill switch"
     success_criteria: "All campaign tiers execute normally without agent prefix, staying within budget"
