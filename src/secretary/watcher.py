@@ -1441,7 +1441,7 @@ class Watcher:
                                 force_tier=effective_tier,
                                 tools=_effective_tools,
                                 max_turns=12 if task_source in ("goals", "escalation") else None,
-                                max_tool_calls=40 if task_source in ("goals", "escalation") else 20,
+                                max_tool_calls=60 if task_source in ("goals", "escalation") else 20,
                                 _progress=progress,
                                 strategy_library=self._strategy_library,
                             )

@@ -1277,17 +1277,40 @@ async def run(
             if tool_blocks:
                 _tool_sem = asyncio.Semaphore(_MAX_PARALLEL_TOOLS)
 
-                async def _exec_one(block: Any) -> tuple[Any, str]:
+                # Pre-filter redundant file_reads: short-circuit with synthetic
+                # response and DON'T count them against the tool budget.
+                # This was the #1 cause of tool-budget exhaustion in Sonnet+high
+                # reasoning sprints (3+ redundant reads per task observed).
+                def _is_redundant_read(block: Any) -> bool:
+                    if not _preloaded_paths or block.name != "file_read":
+                        return False
+                    path = block.input.get("path", "") or ""
+                    for pp in _preloaded_paths:
+                        if path.endswith(pp) or pp.endswith(path):
+                            return True
+                    return False
+
+                async def _exec_one(block: Any) -> tuple[Any, str, bool]:
+                    if _is_redundant_read(block):
+                        path = block.input.get("path", "")
+                        synthetic = (
+                            f"[redundant file_read intercepted] '{path}' was already pre-loaded "
+                            "at task start. Use the pre-loaded content in the task prompt; do not "
+                            "call file_read on it again."
+                        )
+                        return block, synthetic, True
                     async with _tool_sem:
                         log.debug("Calling tool: %s", block.name)
                         output = await _execute_tool(block.name, block.input, tools or {})
-                        return block, output
+                        return block, output, False
 
                 parallel_results = await asyncio.gather(
                     *[_exec_one(b) for b in tool_blocks]
                 )
-                _total_tool_calls += len(tool_blocks)
-                for block, tool_output in parallel_results:
+                # Only count tool calls that were actually executed (not redundant-intercepted).
+                _executed_count = sum(1 for _, _, is_red in parallel_results if not is_red)
+                _total_tool_calls += _executed_count
+                for block, tool_output, is_redundant in parallel_results:
                     if tool_output.startswith("Error"):
                         _turn_had_error = True
                     tool_results.append({
@@ -1295,17 +1318,12 @@ async def run(
                         "tool_use_id": block.id,
                         "content": tool_output,
                     })
-                    # Redundant read tracking: warn when model re-reads pre-loaded content
-                    if _preloaded_paths and block.name == "file_read":
-                        _read_path = block.input.get("path", "")
-                        for pp in _preloaded_paths:
-                            if _read_path.endswith(pp) or pp.endswith(_read_path):
-                                _redundant_reads += 1
-                                log.warning(
-                                    "Redundant file_read: '%s' was already pre-loaded (waste #%d)",
-                                    _read_path, _redundant_reads,
-                                )
-                                break
+                    if is_redundant:
+                        _redundant_reads += 1
+                        log.warning(
+                            "Redundant file_read intercepted: '%s' (waste #%d, NOT charged to budget)",
+                            block.input.get("path", ""), _redundant_reads,
+                        )
 
             # Track consecutive tool errors — break if stuck in a failure loop
             if _turn_had_error:
