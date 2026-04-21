@@ -34,6 +34,7 @@ READ_ONLY_TOOLS = frozenset({
     "file_read",
     "file_list",
     "grep_search",
+    "web_fetch",
 })
 
 WRITE_LOCAL_TOOLS = frozenset({

@@ -22,6 +22,7 @@ watcher:
   interval_minutes: 30
   max_runs: 0
   pause_on_failure: true
+  pause_on_failure_multiplier: 1.0   # 1.0 = iterate at normal pace; failures ARE the signal
   campaign_file: "campaign.yaml,campaigns/self-build.yaml"
   max_premium_per_cycle: 0
   max_retries: 2
@@ -57,6 +58,8 @@ goals:
   curriculum_level: 3              # Full autonomy — all priority levels
   max_active_goals: 5
   auto_graduate: true              # Layer 26: per-goal trust-based graduation
+  auto_approve_self_improve: true  # Skip approval queue for scoped self-improve proposals (sandbox still gates)
+  auto_reject_pending_days: 3.0    # Auto-reject stale pending proposals (keeps queue clean)
 
 events:
   enabled: true

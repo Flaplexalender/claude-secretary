@@ -166,3 +166,31 @@ goals:
       - id: deterministic-pipelines
         description: "Code-based pipelines for simple tasks (no LLM needed)"
         status: not-started
+
+  - id: secretary-ui
+    description: "Secretary builds and maintains its own web UI so Alexander can see live what it's doing"
+    success_criteria: "Local web app at http://localhost:<port> shows: current run/task, goals + progress, proposals + approvals, recent runs, live cost tracker, and lets Alexander approve/reject/pause without CLI"
+    priority: 2
+    status: in-progress
+    sub_goals:
+      - id: dashboard-scaffold
+        description: "Flask app in src/secretary/web_dashboard.py serves heartbeat + metrics + recent tasks + task detail APIs"
+        status: done
+        evidence: "web_dashboard.py exists with /api/heartbeat, /api/metrics, /api/recent-tasks, /api/task/<id>"
+      - id: dashboard-goals-view
+        description: "/api/goals endpoint + HTML view: list all goals, their status, pending approvals, and graduation overrides"
+        status: not-started
+      - id: dashboard-proposals-view
+        description: "/api/proposals endpoint + HTML view: list self-improve proposals with status (pending/executing/completed/failed/discarded), target files, priority"
+        status: not-started
+      - id: dashboard-approve-ui
+        description: "Approve/reject buttons wired to goal_approval.approve_task/reject_task; replaces CLI for day-to-day use"
+        status: not-started
+        depends_on: [dashboard-proposals-view]
+      - id: dashboard-live-cost
+        description: "Running-total cost widget pulling from run_log.jsonl with per-tier and per-goal breakdown (CAD)"
+        status: not-started
+      - id: dashboard-run-launcher
+        description: "One-click 'Run now' and 'Pause watch' controls"
+        status: not-started
+        depends_on: [dashboard-goals-view]

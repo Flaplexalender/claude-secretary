@@ -147,11 +147,14 @@ def prune_old_entries(
     goal_state: dict[str, Any],
     max_age_seconds: float = 7 * 86400,
     max_entries: int = 200,
+    stale_pending_seconds: float = 3 * 86400,
 ) -> int:
     """Remove old decided entries to prevent unbounded growth.
 
-    Keeps pending and approved entries regardless of age.
-    Returns count of pruned entries.
+    Auto-rejects pending entries older than ``stale_pending_seconds`` so the
+    queue can't silently grow with unresolved proposals (operator-autonomy).
+    Keeps approved entries regardless of age.
+    Returns count of pruned entries (including auto-rejected stale ones).
     """
     queue = goal_state.get("approval_queue", [])
     now = time.time()
@@ -159,9 +162,21 @@ def prune_old_entries(
     pruned = 0
     for entry in queue:
         status = entry["status"]
+        age = now - entry.get("submitted", 0)
+        if status == "pending" and stale_pending_seconds > 0 and age >= stale_pending_seconds:
+            # Auto-reject stale pending proposals — operator never acted.
+            entry["status"] = "rejected"
+            entry["decided"] = now
+            entry["reject_reason"] = "stale_auto_reject"
+            # Keep as rejected within max_age_seconds window for audit.
+            if age < max_age_seconds:
+                keep.append(entry)
+            else:
+                pruned += 1
+            continue
         if status in ("pending", "approved"):
             keep.append(entry)
-        elif now - entry.get("submitted", 0) < max_age_seconds:
+        elif age < max_age_seconds:
             keep.append(entry)
         else:
             pruned += 1
@@ -177,3 +192,56 @@ def prune_old_entries(
         keep = active + decided
     goal_state["approval_queue"] = keep
     return pruned
+
+
+# Directory prefixes considered safe for automatic self-improve approval.
+# Changes outside these paths still require manual approval.
+_SAFE_SELF_IMPROVE_PREFIXES: tuple[str, ...] = (
+    "src/secretary/",
+    "tests/",
+    "campaigns/",
+)
+
+
+def auto_approve_self_improve(
+    goal_state: dict[str, Any],
+    max_tier: str = "medium",
+) -> list[str]:
+    """Promote scoped self-improve proposals from pending → approved.
+
+    Criteria (all required):
+      * ``_meta._self_improve`` is True
+      * Tier is at or below ``max_tier`` (guardrail already enforces this,
+        but we double-check here to stay safe if config is reloaded)
+      * All ``_meta._target_files`` live under a safe prefix
+
+    The sandbox + test gate in ``self_improve.py`` still protects promotion;
+    this only removes the manual ``goals --approve`` step for scoped fixes.
+
+    Returns the list of task IDs that were auto-approved.
+    """
+    tier_rank = {"low": 0, "medium": 1, "high": 2, "deep": 3}
+    ceiling = tier_rank.get(max_tier, 1)
+    approved: list[str] = []
+    now = time.time()
+    for entry in goal_state.get("approval_queue", []):
+        if entry.get("status") != "pending":
+            continue
+        meta = entry.get("_meta", {}) or {}
+        if not meta.get("_self_improve"):
+            continue
+        if tier_rank.get(entry.get("tier", "medium"), 99) > ceiling:
+            continue
+        targets = meta.get("_target_files") or []
+        if not targets:
+            continue
+        if not all(
+            isinstance(t, str) and any(t.startswith(p) for p in _SAFE_SELF_IMPROVE_PREFIXES)
+            for t in targets
+        ):
+            continue
+        entry["status"] = "approved"
+        entry["decided"] = now
+        entry["approve_reason"] = "auto_approve_self_improve"
+        approved.append(entry["id"])
+    return approved

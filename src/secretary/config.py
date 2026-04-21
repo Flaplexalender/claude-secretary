@@ -129,6 +129,7 @@ class WatcherConfig(BaseModel):
     interval_minutes: int = 30
     max_runs: int = 0                  # 0 = unlimited
     pause_on_failure: bool = True
+    pause_on_failure_multiplier: float = 1.0  # 1.0 = no extra delay; prior behavior = 2.0
     campaign_file: str = "campaign.yaml"
     max_premium_per_cycle: float = 0.0  # 0 = unlimited, e.g. 3.0 = stop after 3x premium
     max_retries: int = 3               # retries per failed task with exponential backoff (0 = no retry)
@@ -249,6 +250,8 @@ class GoalConfig(BaseModel):
     curriculum_level: int = 1                 # 0-3: gates which goals can run (0=none, 1=safe, 2=standard, 3=full)
     max_active_goals: int = 3                 # Focus window — max goals active per cycle (overrides curriculum default)
     auto_graduate: bool = False               # Layer 23: auto-apply graduation recs when trust data warrants
+    auto_approve_self_improve: bool = False   # Auto-approve scoped self-improve proposals (sandbox still gates)
+    auto_reject_pending_days: float = 3.0     # Auto-reject pending approvals older than this (0 = disabled)
 
 
 class MultiInstanceConfig(BaseModel):

@@ -48,6 +48,7 @@ from .goal_escalation import evaluate_escalations
 from .goal_guardrails import apply_guardrails
 from .goal_approval import (
     approve_all as _approve_all,
+    auto_approve_self_improve,
     get_approved,
     get_pending,
     mark_executed,
@@ -954,6 +955,18 @@ class Watcher:
                             mark_notified(goal_store._state, tid)
                     tasks.extend(_exec_tasks)
 
+            # Auto-approve scoped self-improve proposals if enabled.
+            if getattr(self.config.goals, "auto_approve_self_improve", False):
+                _auto_ids = auto_approve_self_improve(
+                    goal_store._state,
+                    max_tier=self.config.goals.max_tier,
+                )
+                if _auto_ids:
+                    log.info(
+                        "Auto-approved %d scoped self-improve proposal(s): %s",
+                        len(_auto_ids), ", ".join(_auto_ids),
+                    )
+
             # Pick up previously-approved tasks from the queue.
             _approved = get_approved(goal_store._state)
             if _approved:
@@ -966,8 +979,12 @@ class Watcher:
                 )
                 tasks.extend(approved_tasks)
 
-            # Housekeeping: prune old queue entries.
-            prune_old_entries(goal_store._state)
+            # Housekeeping: prune old queue entries (auto-rejects stale pending).
+            _stale_days = getattr(self.config.goals, "auto_reject_pending_days", 3.0)
+            prune_old_entries(
+                goal_store._state,
+                stale_pending_seconds=_stale_days * 86400 if _stale_days > 0 else 0,
+            )
 
             # Layer 20: Trust scoring — compute and record per-goal trust.
             _trust: dict = {}
@@ -1956,8 +1973,12 @@ class Watcher:
             # Wait for next cycle
             wait_minutes = self.interval
             if failed > 0 and self.pause_on_failure:
-                wait_minutes *= 2
-                log.info("Failures detected — next run in %d minutes (doubled)", wait_minutes)
+                _mult = max(1.0, getattr(self.config.watcher, "pause_on_failure_multiplier", 1.0))
+                if _mult > 1.0:
+                    wait_minutes = int(wait_minutes * _mult)
+                    log.info("Failures detected — next run in %d minutes (x%.1f)", wait_minutes, _mult)
+                else:
+                    log.info("Failures detected — iterating at normal pace (%d min)", wait_minutes)
             else:
                 log.info("Next run in %d minutes. Press Ctrl+C to stop.", wait_minutes)
 

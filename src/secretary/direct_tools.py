@@ -345,6 +345,54 @@ def build_file_registry(
             except Exception:
                 pass
 
+    # --- web_fetch: read-only HTTP GET for internet research ---
+    async def web_fetch(args: dict) -> dict[str, Any]:
+        """Fetch a URL and return text content (HTML stripped to plain text)."""
+        import asyncio as _asyncio
+        url = args.get("url")
+        max_bytes = min(500_000, max(1_000, args.get("max_bytes", 120_000)))
+        if not url or not isinstance(url, str):
+            return _error("Missing 'url'. Usage: web_fetch({url: 'https://example.com'})")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return _error("Only http(s) URLs allowed")
+        try:
+            import httpx  # type: ignore
+        except ImportError:
+            return _error("httpx not installed — cannot fetch URLs")
+
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=20.0,
+                headers={"User-Agent": "claude-secretary/1.0 (+research)"},
+            ) as client:
+                resp = await _asyncio.wait_for(client.get(url), timeout=25.0)
+        except _asyncio.TimeoutError:
+            return _error(f"Timeout fetching {url}")
+        except Exception as e:
+            return _error(f"Fetch failed: {e}")
+
+        if resp.status_code >= 400:
+            return _error(f"HTTP {resp.status_code} from {url}")
+        ctype = resp.headers.get("content-type", "").lower()
+        raw = resp.content[:max_bytes]
+        try:
+            text = raw.decode(resp.encoding or "utf-8", errors="replace")
+        except Exception:
+            text = raw.decode("utf-8", errors="replace")
+
+        # Strip HTML if needed (simple tag-stripping; no JS rendering).
+        if "html" in ctype or text.lstrip().startswith("<"):
+            import re as _re
+            text = _re.sub(r"<script[\s\S]*?</script>", " ", text, flags=_re.I)
+            text = _re.sub(r"<style[\s\S]*?</style>", " ", text, flags=_re.I)
+            text = _re.sub(r"<[^>]+>", " ", text)
+            text = _re.sub(r"\s+", " ", text).strip()
+
+        truncated = len(resp.content) > max_bytes
+        suffix = f"\n\n[truncated — {len(resp.content)} total bytes]" if truncated else ""
+        return _text(f"GET {url} ({resp.status_code}, {ctype})\n\n{text[:max_bytes]}{suffix}")
+
     return {
         "file_read": {
             "name": "file_read",
@@ -439,6 +487,19 @@ def build_file_registry(
                 "required": ["code"],
             },
             "func": run_python,
+        },
+        "web_fetch": {
+            "name": "web_fetch",
+            "description": "Fetch a URL (GET) for internet research. Returns HTML stripped to plain text, truncated at max_bytes. Read-only. Example: {url: 'https://docs.python.org/3/library/asyncio.html'}",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full http(s) URL"},
+                    "max_bytes": {"type": "integer", "description": "Byte cap (1_000-500_000)", "default": 120_000},
+                },
+                "required": ["url"],
+            },
+            "func": web_fetch,
         },
     }
 
