@@ -80,6 +80,73 @@ CONSECUTIVE_FAIL_LIMIT = 3     # pause pipeline after this many consecutive fail
 CONSECUTIVE_FAIL_COOLDOWN_HOURS = 2.0  # how long to pause after hitting the limit
 SELF_IMPROVE_GOAL_ID = "self-improvement"
 
+# Master-baseline-red circuit breaker.
+# When master's test suite is broken (any source), self-improve sandbox tasks
+# all fail with "Pre-test baseline FAILED — tests broken before agent ran"
+# at self_improve.py L1612 AFTER spending sandbox setup + optional Haiku
+# analysis. Observed Apr 22: 18 such failures in one day = wasted setup
+# for the same root cause. This circuit breaker scans run_log directly and
+# short-circuits BEFORE proposal generation when master is likely red.
+#
+# Complementary to _check_consecutive_failures (which only triggers after
+# 3 CONFIRMED proposal failures — 3 wasted cycles minimum). This gate
+# fires on any run_log evidence and catches the problem in cycle 1.
+BASELINE_RED_LOOKBACK = 20         # scan this many recent run_log entries
+BASELINE_RED_THRESHOLD = 2         # trip breaker at this many recent baseline failures
+BASELINE_RED_COOLDOWN_MINUTES = 60 # most recent must be within this window
+_BASELINE_RED_ERROR_PREFIX = "Pre-test baseline FAILED"
+
+
+def _master_baseline_appears_red(
+    run_log: "RunLog",
+    now: datetime | None = None,
+) -> bool:
+    """Return True if recent run_log evidence suggests master's tests are broken.
+
+    Heuristic: count entries in the last ``BASELINE_RED_LOOKBACK`` whose
+    ``error`` starts with ``Pre-test baseline FAILED``. If >=
+    ``BASELINE_RED_THRESHOLD`` such entries exist AND the most recent one
+    is within ``BASELINE_RED_COOLDOWN_MINUTES``, the breaker trips.
+
+    Pure run_log inspection — no test execution, no LLM calls, cheap.
+    """
+    try:
+        recent = run_log.recent(BASELINE_RED_LOOKBACK)
+    except Exception:  # defensive — never let this crash the cycle
+        log.debug("baseline-red check: run_log.recent failed", exc_info=True)
+        return False
+    if not recent:
+        return False
+    baseline_failures = [
+        e for e in recent
+        if not e.success
+        and isinstance(getattr(e, "error", None), str)
+        and e.error.startswith(_BASELINE_RED_ERROR_PREFIX)
+    ]
+    if len(baseline_failures) < BASELINE_RED_THRESHOLD:
+        return False
+    # Most recent baseline failure must be fresh — older ones likely already
+    # healed and we'd just be pausing on stale signal.
+    _now = now or datetime.now(timezone.utc)
+    most_recent = max(
+        baseline_failures,
+        key=lambda e: getattr(e, "timestamp", ""),
+        default=None,
+    )
+    if most_recent is None:
+        return False
+    ts = getattr(most_recent, "timestamp", "")
+    if not ts:
+        return False
+    try:
+        last_dt = datetime.fromisoformat(ts)
+    except (ValueError, TypeError):
+        return False
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=timezone.utc)
+    minutes_since = (_now - last_dt).total_seconds() / 60.0
+    return minutes_since <= BASELINE_RED_COOLDOWN_MINUTES
+
 # Scope preamble prepended to every self-improvement task prompt to prevent
 # agents from writing files outside the allowed scope.
 _SCOPE_PREAMBLE = """\
@@ -1011,6 +1078,30 @@ async def run_self_improve_analysis(
             health_log.record(
                 "self_improve_paused", "warning",
                 f"Pipeline paused: last {CONSECUTIVE_FAIL_LIMIT} proposals failed",
+                source="goal_self_improve.run_self_improve_analysis",
+            )
+        return tasks
+
+    # 0c. Master-baseline-red circuit breaker — if run_log shows master's
+    #     test suite is already broken, skip dispatch. Every self-improve
+    #     sandbox task would fail at self_improve.py's pre-test baseline
+    #     check anyway, burning sandbox setup time + Haiku analysis cost
+    #     on the identical failure mode. Cheap run_log inspection — fires
+    #     from the first cycle evidence appears, unlike the 3-proposal
+    #     _check_consecutive_failures gate.
+    if _master_baseline_appears_red(run_log):
+        log.warning(
+            "Self-improve paused: master baseline appears red "
+            "(>=%d 'Pre-test baseline FAILED' in last %d run_log entries, "
+            "most recent within %d min). Skipping dispatch until master heals.",
+            BASELINE_RED_THRESHOLD,
+            BASELINE_RED_LOOKBACK,
+            BASELINE_RED_COOLDOWN_MINUTES,
+        )
+        if health_log:
+            health_log.record(
+                "master_baseline_red", "warning",
+                "Self-improve skipped: master baseline red (pre-test failures in run_log)",
                 source="goal_self_improve.run_self_improve_analysis",
             )
         return tasks

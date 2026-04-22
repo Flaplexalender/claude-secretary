@@ -794,3 +794,169 @@ class TestDeduplicateProposals:
         from secretary.goal_self_improve import _extract_target
         assert _extract_target("In src/secretary/foo.py, function bar: do stuff") == ("src/secretary/foo.py", "bar")
         assert _extract_target("No function target here") is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: _master_baseline_appears_red circuit breaker
+# ---------------------------------------------------------------------------
+
+class TestMasterBaselineRedBreaker:
+    """Run_log-level circuit breaker that pauses self-improve when master is red.
+
+    Complements _check_consecutive_failures (proposal-status based). This
+    gate fires on run_log evidence and triggers earlier: from the first
+    cycle where BASELINE_RED_THRESHOLD 'Pre-test baseline FAILED' entries
+    appear within the lookback window.
+    """
+
+    def _baseline_failure(self, minutes_ago: float = 0.0) -> RunLogEntry:
+        ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+        e = RunLogEntry(
+            timestamp=ts,
+            cycle=0,
+            task="[self-improve] something",
+            tier="medium",
+            model="claude-sonnet-4.6",
+            success=False,
+            output_preview="",
+            error="Pre-test baseline FAILED — tests broken before agent ran. Affected: [...]",
+            duration_s=0.0,
+            tools_used=[],
+            source="campaign",
+            goal_id="",
+            num_turns=0,
+        )
+        return e
+
+    def test_empty_run_log_returns_false(self):
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        run_log = MagicMock()
+        run_log.recent.return_value = []
+        assert _master_baseline_appears_red(run_log) is False
+
+    def test_below_threshold_returns_false(self):
+        """A single baseline failure is not enough — threshold is 2."""
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        run_log = MagicMock()
+        run_log.recent.return_value = [self._baseline_failure(minutes_ago=5)]
+        assert _master_baseline_appears_red(run_log) is False
+
+    def test_fires_at_threshold(self):
+        """Two recent baseline failures trip the breaker."""
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        run_log = MagicMock()
+        run_log.recent.return_value = [
+            self._baseline_failure(minutes_ago=5),
+            self._baseline_failure(minutes_ago=10),
+        ]
+        assert _master_baseline_appears_red(run_log) is True
+
+    def test_stale_failures_do_not_fire(self):
+        """If the most recent baseline failure is older than the cooldown, master likely healed."""
+        from secretary.goal_self_improve import (
+            _master_baseline_appears_red,
+            BASELINE_RED_COOLDOWN_MINUTES,
+        )
+        run_log = MagicMock()
+        run_log.recent.return_value = [
+            self._baseline_failure(minutes_ago=BASELINE_RED_COOLDOWN_MINUTES + 10),
+            self._baseline_failure(minutes_ago=BASELINE_RED_COOLDOWN_MINUTES + 20),
+        ]
+        assert _master_baseline_appears_red(run_log) is False
+
+    def test_success_entries_do_not_count(self):
+        """Successful entries never contribute to the breaker, even if error field somehow set."""
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        good = RunLogEntry(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            cycle=0, task="ok", tier="low", model="x",
+            success=True, output_preview="", error=None,
+            duration_s=0.0, tools_used=[], source="campaign",
+            goal_id="", num_turns=0,
+        )
+        run_log = MagicMock()
+        run_log.recent.return_value = [good, good, good]
+        assert _master_baseline_appears_red(run_log) is False
+
+    def test_other_error_prefixes_do_not_fire(self):
+        """Non-baseline failures are not the signal we care about here."""
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        e = RunLogEntry(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            cycle=0, task="x", tier="medium", model="x",
+            success=False, output_preview="",
+            error="Sandbox tests failed after code changes",
+            duration_s=0.0, tools_used=[], source="campaign",
+            goal_id="", num_turns=0,
+        )
+        run_log = MagicMock()
+        run_log.recent.return_value = [e, e, e]
+        assert _master_baseline_appears_red(run_log) is False
+
+    def test_malformed_timestamp_does_not_crash(self):
+        """Bad ISO timestamp is treated as stale (cannot be confirmed recent)."""
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        bad = RunLogEntry(
+            timestamp="not-an-iso-timestamp",
+            cycle=0, task="x", tier="medium", model="x",
+            success=False, output_preview="",
+            error="Pre-test baseline FAILED — tests broken before agent ran",
+            duration_s=0.0, tools_used=[], source="campaign",
+            goal_id="", num_turns=0,
+        )
+        run_log = MagicMock()
+        run_log.recent.return_value = [bad, bad]
+        assert _master_baseline_appears_red(run_log) is False
+
+    def test_run_log_crash_does_not_propagate(self):
+        """If run_log.recent raises, breaker returns False (fail open)."""
+        from secretary.goal_self_improve import _master_baseline_appears_red
+        run_log = MagicMock()
+        run_log.recent.side_effect = RuntimeError("boom")
+        assert _master_baseline_appears_red(run_log) is False
+
+    @pytest.mark.asyncio
+    async def test_analysis_skipped_when_baseline_red(self):
+        """run_self_improve_analysis returns empty and never calls Haiku when master is red."""
+        from secretary.goal_self_improve import run_self_improve_analysis
+        old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+        state = _make_state(last_analysis=old)
+        run_log = MagicMock()
+        # Baseline-failure entries in recent history
+        run_log.recent.return_value = [
+            self._baseline_failure(minutes_ago=2),
+            self._baseline_failure(minutes_ago=4),
+            self._baseline_failure(minutes_ago=6),
+        ]
+        config = _make_config()
+
+        with patch(
+            "secretary.goal_self_improve._run_failure_analysis",
+            new=AsyncMock(return_value=[]),
+        ) as analysis_mock:
+            tasks = await run_self_improve_analysis(state, run_log, config)
+        # No tasks dispatched, no analysis LLM call
+        assert tasks == []
+        analysis_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_health_log_records_master_baseline_red(self):
+        """Health log gets a 'master_baseline_red' event when breaker trips."""
+        from secretary.goal_self_improve import run_self_improve_analysis
+        old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+        state = _make_state(last_analysis=old)
+        run_log = MagicMock()
+        run_log.recent.return_value = [
+            self._baseline_failure(minutes_ago=2),
+            self._baseline_failure(minutes_ago=4),
+        ]
+        config = _make_config()
+        health_log = MagicMock()
+
+        tasks = await run_self_improve_analysis(state, run_log, config, health_log=health_log)
+        assert tasks == []
+        # Confirm a 'master_baseline_red' event was recorded
+        calls = health_log.record.call_args_list
+        events = [c.args[0] if c.args else c.kwargs.get("event") for c in calls]
+        assert "master_baseline_red" in events
+
