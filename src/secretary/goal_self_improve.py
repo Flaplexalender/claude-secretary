@@ -576,6 +576,37 @@ def record_proposal_result(
             break
 
 
+def defer_proposal_for_baseline_red(
+    state: dict[str, Any],
+    proposal_id: str,
+) -> bool:
+    """Revert an ``executing`` proposal back to ``pending`` without counting it
+    as executed. Used by the watcher dispatch-level baseline-red circuit
+    breaker to recycle proposals when master's test suite is broken, so they
+    are retried once master heals instead of being prematurely marked failed.
+
+    Does NOT mutate total_executed / total_promoted / result / executed fields
+    (those only move on real sandbox execution).  Stamps a ``deferred_at``
+    timestamp and increments ``defer_count`` for observability.
+
+    Returns True if a matching proposal was found and reverted, else False.
+    """
+    imp = _get_improve_state(state)
+    for p in imp["proposals"]:
+        if p.get("proposal_id") != proposal_id:
+            continue
+        # Only defer proposals that were actually dispatched (status=executing).
+        # Proposals in other states (pending/completed/failed/...) are either
+        # already safe to pick up or already terminal — don't touch them.
+        if p.get("status") != "executing":
+            return False
+        p["status"] = "pending"
+        p["deferred_at"] = datetime.now(timezone.utc).isoformat()
+        p["defer_count"] = int(p.get("defer_count", 0)) + 1
+        return True
+    return False
+
+
 def discard_stale_proposals(
     state: dict[str, Any],
     max_age_hours: float = 72.0,

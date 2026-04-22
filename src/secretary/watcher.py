@@ -75,7 +75,12 @@ from .goal_verification import (
     PASS,
     FAIL,
 )
-from .goal_self_improve import run_self_improve_analysis, record_proposal_result
+from .goal_self_improve import (
+    run_self_improve_analysis,
+    record_proposal_result,
+    _master_baseline_appears_red,
+    defer_proposal_for_baseline_red,
+)
 from .pipeline_health import HealthLog
 from .goal_harness import (
     generate_goal_test,
@@ -1300,6 +1305,41 @@ class Watcher:
             last_error: str | None = None
             last_result: Any = None  # track for metrics
             attempts = 1 + self.max_retries  # 1 initial + N retries
+
+            # Pre-flight: master-baseline-red circuit breaker at dispatch.
+            # Extends the step-0c gate inside run_self_improve_analysis upstream
+            # to catch _self_improve tasks that enter this loop from the
+            # auto-approval path (auto_approve_self_improve) or the manual
+            # approval queue (get_approved) — both bypass step 0c because they
+            # pick up proposals that are already in the queue, not newly
+            # generated. When master is red, every such task would fail at
+            # self_improve.py's pre-test baseline check after spending sandbox
+            # setup + analysis cost on the identical failure mode. Here we
+            # defer the proposal back to 'pending' (no executed timestamp, no
+            # total_executed bump, no result recorded) so it's retried once
+            # master heals instead of being prematurely marked failed.
+            if task_def.get("_self_improve", False) and _master_baseline_appears_red(self.run_log):
+                _prop_id = task_def.get("_proposal_id", "")
+                if _prop_id and goal_store is not None:
+                    try:
+                        defer_proposal_for_baseline_red(goal_store._state, _prop_id)
+                        goal_store.save_state()
+                    except Exception:  # defensive — never brick dispatch
+                        log.debug("defer_proposal_for_baseline_red failed", exc_info=True)
+                self.health_log.record(
+                    "master_baseline_red_dispatch", "warning",
+                    f"Deferred self-improve task at dispatch (proposal={_prop_id or '?'}): "
+                    f"master baseline red",
+                    source="watcher._run_cycle",
+                    cycle=self._runs_completed,
+                )
+                log.warning(
+                    "Self-improve deferred at dispatch: master baseline red "
+                    "(proposal %s reverted to pending)", _prop_id or "?",
+                )
+                if task_id:
+                    task_outcomes[task_id] = False
+                continue
 
             # Tier escalation: on retry, bump to next tier if escalate_on_retry
             escalate = task_def.get("escalate_on_retry", True)

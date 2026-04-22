@@ -265,6 +265,60 @@ class TestRecordProposalResult:
 
 
 # ---------------------------------------------------------------------------
+# Tests: defer_proposal_for_baseline_red
+# ---------------------------------------------------------------------------
+
+class TestDeferProposalForBaselineRed:
+    def test_reverts_executing_to_pending(self):
+        from secretary.goal_self_improve import defer_proposal_for_baseline_red
+        p = _make_proposal(proposal_id="p1", status="executing")
+        state = _make_state(proposals=[p])
+        ok = defer_proposal_for_baseline_red(state, "p1")
+        assert ok is True
+        assert p["status"] == "pending"
+
+    def test_does_not_bump_totals(self):
+        from secretary.goal_self_improve import defer_proposal_for_baseline_red
+        p = _make_proposal(proposal_id="p1", status="executing")
+        state = _make_state(proposals=[p], total_executed=5, total_promoted=2)
+        defer_proposal_for_baseline_red(state, "p1")
+        assert state["self_improve_state"]["total_executed"] == 5
+        assert state["self_improve_state"]["total_promoted"] == 2
+        assert p.get("result") is None
+        assert p.get("executed") is None  # original sentinel preserved
+
+    def test_stamps_deferred_metadata(self):
+        from secretary.goal_self_improve import defer_proposal_for_baseline_red
+        p = _make_proposal(proposal_id="p1", status="executing")
+        state = _make_state(proposals=[p])
+        defer_proposal_for_baseline_red(state, "p1")
+        assert "deferred_at" in p
+        assert p["defer_count"] == 1
+        # Second defer increments counter
+        p["status"] = "executing"
+        defer_proposal_for_baseline_red(state, "p1")
+        assert p["defer_count"] == 2
+
+    def test_ignores_non_executing_proposals(self):
+        from secretary.goal_self_improve import defer_proposal_for_baseline_red
+        for status in ("pending", "completed", "failed", "discarded",
+                       "succeeded_not_promoted"):
+            p = _make_proposal(proposal_id="p1", status=status)
+            state = _make_state(proposals=[p])
+            ok = defer_proposal_for_baseline_red(state, "p1")
+            assert ok is False, f"should not defer from status={status}"
+            assert p["status"] == status
+
+    def test_no_match_returns_false(self):
+        from secretary.goal_self_improve import defer_proposal_for_baseline_red
+        p = _make_proposal(proposal_id="p1", status="executing")
+        state = _make_state(proposals=[p])
+        ok = defer_proposal_for_baseline_red(state, "nonexistent")
+        assert ok is False
+        assert p["status"] == "executing"
+
+
+# ---------------------------------------------------------------------------
 # Tests: discard_stale_proposals
 # ---------------------------------------------------------------------------
 
