@@ -350,3 +350,129 @@ def test_format_limits_to_max_n(tmp_path: Path) -> None:
     md = po.format_recent_outcomes_for_prompt(tmp_path, max_n=2)
     # Should contain only the 2 most recent descriptions
     assert md.count("**[") == 2
+
+
+# ── _is_environmental_failure / _filter_environmental ────────────────────
+
+
+def test_env_failure_detects_baseline_broken() -> None:
+    """Entries with 'Pre-test baseline FAILED' prefix are environmental."""
+    e = {
+        "success": False,
+        "error": "Pre-test baseline FAILED — tests broken before agent ran. Affected: ...",
+    }
+    assert po._is_environmental_failure(e) is True
+
+
+def test_env_failure_detects_proxy_connection_refused() -> None:
+    """Proxy-down entries are environmental, not agent-caused."""
+    e = {
+        "success": False,
+        "error": "ConnectionRefusedError: [WinError 10061] No connection could be made",
+    }
+    assert po._is_environmental_failure(e) is True
+
+
+def test_env_failure_false_for_success() -> None:
+    """Successful entries are never environmental failures."""
+    assert po._is_environmental_failure({"success": True, "error": "Pre-test baseline FAILED"}) is False
+
+
+def test_env_failure_false_for_agent_failure() -> None:
+    """Normal agent failures (non-baseline, non-proxy) are not environmental."""
+    e = {"success": False, "error": "Sandbox tests failed after code changes"}
+    assert po._is_environmental_failure(e) is False
+
+
+def test_env_failure_false_for_missing_error_field() -> None:
+    """Missing/None/non-str error field doesn't crash the check."""
+    assert po._is_environmental_failure({"success": False}) is False
+    assert po._is_environmental_failure({"success": False, "error": None}) is False
+    assert po._is_environmental_failure({"success": False, "error": 123}) is False
+
+
+def test_record_baseline_excludes_environmental_failures(tmp_path: Path) -> None:
+    """Baseline snapshot must ignore environmental failures.
+
+    Regression for Apr 22 window: 18 'Pre-test baseline FAILED' entries
+    in a day would have crushed success_rate from 1.0 to ~0.0 and
+    inflated cps, poisoning every outcome measured during that window.
+    """
+    now = datetime.now(timezone.utc)
+    real_runs = [
+        _entry(ts=now, success=True, cost_usd=0.10, num_turns=5, duration_s=10.0)
+        for _ in range(15)
+    ]
+    env_failures = [
+        {
+            "timestamp": now.isoformat(),
+            "success": False,
+            "cost_usd": 0.0,
+            "num_turns": 0,
+            "duration_s": 0.0,
+            "error": "Pre-test baseline FAILED — tests broken before agent ran",
+        }
+        for _ in range(10)
+    ]
+    # Env failures are the most recent; a naive last-15 window would be
+    # dominated by them. After filtering, the window should be the 15
+    # real successful runs.
+    _write_run_log(tmp_path, real_runs + env_failures)
+
+    ok = po.record_baseline(
+        tmp_path, proposal_id="p", commit_hash="h",
+        task="t", description="d",
+    )
+    assert ok is True
+    rec = po._read_outcomes(tmp_path)[0]
+    assert rec["baseline"]["task_count"] == 15
+    assert rec["baseline"]["success_rate"] == 1.0
+    # cps = total_cost / successes = $1.50 / 15 = $0.10
+    assert rec["baseline"]["cost_per_success_usd"] == pytest.approx(0.10)
+
+
+def test_measure_pending_outcomes_excludes_environmental_in_after_window(
+    tmp_path: Path,
+) -> None:
+    """After-window snapshot must also filter environmental failures."""
+    t_before = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc)
+    baseline = [_entry(ts=t_before, success=True, cost_usd=0.10) for _ in range(15)]
+    _write_run_log(tmp_path, baseline)
+    po.record_baseline(
+        tmp_path, proposal_id="p", commit_hash="h",
+        task="t", description="d",
+    )
+    rec = po._read_outcomes(tmp_path)[0]
+    # Build an after-window with 15 real successes + 20 env-failures
+    # interleaved. Without the filter, min_tasks_after=15 would include
+    # the env failures and drag metrics down.
+    t_after = datetime.fromtimestamp(rec["promoted_at"] + 60, tz=timezone.utc)
+    after_real = [
+        _entry(ts=t_after, success=True, cost_usd=0.10)
+        for _ in range(15)
+    ]
+    after_env = [
+        {
+            "timestamp": t_after.isoformat(),
+            "success": False,
+            "cost_usd": 0.0,
+            "num_turns": 0,
+            "duration_s": 0.0,
+            "error": "Pre-test baseline FAILED",
+        }
+        for _ in range(20)
+    ]
+    # Put env failures FIRST in the after stream so without the filter
+    # they'd dominate the first-15 slice.
+    _write_run_log(tmp_path, baseline + after_env + after_real)
+
+    n = po.measure_pending_outcomes(tmp_path)
+    assert n == 1
+    rec = po._read_outcomes(tmp_path)[0]
+    outcome = rec["outcome"]
+    assert outcome is not None
+    # after_task_count should be 15 (min_tasks_after) of REAL runs.
+    assert outcome["after_task_count"] == 15
+    assert outcome["after"]["success_rate"] == 1.0
+    # Baseline cps=$0.10, after cps=$0.10 → neutral, ~0% delta
+    assert outcome["verdict"] == "neutral"

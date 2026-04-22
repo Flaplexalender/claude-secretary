@@ -58,6 +58,41 @@ REGRESSION_PCT = 10.0
 # Improvement threshold: cost-per-success must drop > this pct to flag.
 IMPROVEMENT_PCT = 5.0
 
+# Error-message prefixes that indicate environmental (not agent-caused)
+# failures. These entries should be excluded from baseline/after snapshots
+# so outcome measurement reflects agent capability, not infra/test-suite
+# breakage that existed independent of any proposal.
+#
+# Evidence (run_log.jsonl, Apr 22): 18+ "Pre-test baseline FAILED" entries
+# in a single day where master's tests were red before the agent ran —
+# counting these as failures skewed success_rate downward and inflated
+# cost_per_success for every proposal measured during that window.
+_ENVIRONMENTAL_ERROR_PREFIXES: tuple[str, ...] = (
+    "Pre-test baseline FAILED",
+    "ConnectionRefusedError",
+    "[WinError 10061]",
+)
+
+
+def _is_environmental_failure(entry: dict[str, Any]) -> bool:
+    """Return True if the entry's failure is environmental, not agent-caused.
+
+    Environmental failures (broken baseline tests, proxy down, etc.) are
+    not representative of agent quality and should not count against the
+    outcome measurement for any specific proposal.
+    """
+    if entry.get("success"):
+        return False
+    err = entry.get("error") or ""
+    if not isinstance(err, str):
+        return False
+    return any(err.startswith(p) for p in _ENVIRONMENTAL_ERROR_PREFIXES)
+
+
+def _filter_environmental(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop environmental-failure entries from a run_log slice."""
+    return [e for e in entries if not _is_environmental_failure(e)]
+
 
 @dataclass
 class MetricSnapshot:
@@ -144,7 +179,12 @@ def record_baseline(
     if not run_entries:
         log.debug("proposal_outcomes.record_baseline: run_log empty, skipping")
         return False
-    baseline = _snapshot_from_entries(run_entries[-baseline_window:])
+    # Exclude environmental failures (broken baseline, proxy down) — they
+    # are not representative of agent performance and would bias the
+    # snapshot. Take the window AFTER filtering so we still get
+    # baseline_window worth of real signal.
+    filtered = _filter_environmental(run_entries)
+    baseline = _snapshot_from_entries(filtered[-baseline_window:])
     if baseline is None:
         return False
     record = {
@@ -223,6 +263,9 @@ def measure_pending_outcomes(
         if promoted_at <= 0:
             continue
         after_entries = _load_run_log(data_root, since_ts=promoted_at)
+        # Same filter as baseline — environmental failures aren't caused
+        # by the proposal and must not be scored against it.
+        after_entries = _filter_environmental(after_entries)
         if len(after_entries) < min_tasks_after:
             continue
         # Use first min_tasks_after entries after promotion for a fair window.
