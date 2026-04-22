@@ -403,6 +403,169 @@ async def _run_tests(sandbox: Path, source: Path, timeout: int = 300) -> tuple[b
     return await _run_tests_ci(sandbox, source, timeout=timeout)
 
 
+def _sandbox_collect_only(sandbox: Path, timeout: int = 60) -> tuple[bool, str]:
+    """Fast local gate: ensure ``pytest --collect-only`` succeeds in the sandbox.
+
+    Catches import errors and broken test files (e.g. tests against hallucinated
+    APIs, gutted modules) in seconds — before committing CI minutes. Does NOT
+    execute tests; only imports them.
+    """
+    import subprocess
+
+    # Prefer sandbox venv's python
+    if os.name == "nt":
+        py = sandbox / ".venv" / "Scripts" / "python.exe"
+    else:
+        py = sandbox / ".venv" / "bin" / "python"
+    python_exe = str(py) if py.exists() else "python"
+
+    env = os.environ.copy()
+    # Make the sandbox's src/ importable (secretary package)
+    src_dir = sandbox / "src"
+    if src_dir.exists():
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(src_dir) + (os.pathsep + existing if existing else "")
+
+    try:
+        proc = subprocess.run(
+            [python_exe, "-m", "pytest", "--collect-only", "-q",
+             "--no-header", "--ignore=tests/test_web_dashboard.py", "tests/"],
+            cwd=str(sandbox),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"pytest --collect-only timed out after {timeout}s"
+    except Exception as e:
+        return False, f"pytest --collect-only invocation failed: {e}"
+
+    combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    if proc.returncode == 0:
+        return True, "collect-only OK"
+    # Extract the most useful lines (errors)
+    error_lines = [
+        ln for ln in combined.splitlines()
+        if any(kw in ln for kw in ("ERROR", "ImportError", "ModuleNotFoundError",
+                                    "SyntaxError", "collected", "error"))
+    ]
+    tail = combined.splitlines()[-25:]
+    return False, "COLLECT-ONLY FAILED:\n" + "\n".join(error_lines[:15] + tail)
+
+
+def _public_symbols(file_text: str) -> set[str]:
+    """Return the set of public (non-underscore) top-level symbol names defined
+    in a Python source file: functions, classes, and simple assignments.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(file_text)
+    except SyntaxError:
+        return set()
+
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if not node.name.startswith("_"):
+                names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if not node.target.id.startswith("_"):
+                names.add(node.target.id)
+    return names
+
+
+def _check_public_symbols_preserved(
+    source: Path, sandbox: Path, changes: list[str],
+) -> tuple[bool, str]:
+    """Block promotions that remove public symbols still referenced elsewhere.
+
+    For each MOD change under ``src/secretary/`` (non-test .py), compute the set
+    of public symbols in the source (old) and sandbox (new) versions. Any name
+    removed in the new version that is still imported or attribute-accessed
+    anywhere in the sandbox tree blocks the promotion — this is exactly the
+    failure mode that gutted goal_harness.py in ce11f1e/c2e3b72.
+    """
+    import re
+
+    removed_refs: list[str] = []
+
+    for change in changes:
+        action, rel_str = change.split(": ", 1)
+        if action != "MOD":
+            continue
+        rel = Path(rel_str)
+        # Only guard src/secretary/*.py (skip tests, docs, data, workflows)
+        parts = rel.parts
+        if len(parts) < 3 or parts[0] != "src" or parts[1] != "secretary":
+            continue
+        if rel.suffix != ".py":
+            continue
+
+        source_file = source / rel
+        sandbox_file = sandbox / rel
+        if not source_file.exists() or not sandbox_file.exists():
+            continue
+
+        old_text = source_file.read_text(encoding="utf-8", errors="replace")
+        new_text = sandbox_file.read_text(encoding="utf-8", errors="replace")
+        old_syms = _public_symbols(old_text)
+        new_syms = _public_symbols(new_text)
+        removed = old_syms - new_syms
+        if not removed:
+            continue
+
+        module_stem = rel.stem  # e.g. "goal_harness"
+
+        # Search the sandbox tree for references to each removed name.
+        for name in sorted(removed):
+            # Patterns that indicate a real external usage:
+            # 1. `from secretary.<module> import ... <name> ...`
+            # 2. `from .<module> import ... <name> ...`
+            # 3. `<module>.<name>`
+            patterns = [
+                re.compile(rf"from\s+secretary\.{re.escape(module_stem)}\s+import[^\n]*\b{re.escape(name)}\b"),
+                re.compile(rf"from\s+\.{re.escape(module_stem)}\s+import[^\n]*\b{re.escape(name)}\b"),
+                re.compile(rf"\b{re.escape(module_stem)}\.{re.escape(name)}\b"),
+            ]
+            for other in (sandbox / "src").rglob("*.py"):
+                if other == sandbox_file:
+                    continue
+                try:
+                    text = other.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    continue
+                if any(p.search(text) for p in patterns):
+                    removed_refs.append(
+                        f"{rel.as_posix()}: removed public symbol `{name}` still "
+                        f"referenced by {other.relative_to(sandbox).as_posix()}"
+                    )
+                    break
+            else:
+                # Also scan tests/
+                tests_dir = sandbox / "tests"
+                if tests_dir.exists():
+                    for other in tests_dir.rglob("*.py"):
+                        try:
+                            text = other.read_text(encoding="utf-8", errors="replace")
+                        except Exception:
+                            continue
+                        if any(p.search(text) for p in patterns):
+                            removed_refs.append(
+                                f"{rel.as_posix()}: removed public symbol `{name}` still "
+                                f"referenced by {other.relative_to(sandbox).as_posix()}"
+                            )
+                            break
+
+    if removed_refs:
+        return False, "PUBLIC-SYMBOL REGRESSION BLOCKED:\n  " + "\n  ".join(removed_refs[:10])
+    return True, "public symbols preserved"
+
+
 async def _run_tests_subset(
     sandbox: Path, source: Path, test_files: list[str], timeout: int = 300,
 ) -> tuple[bool, str]:
@@ -1510,6 +1673,30 @@ async def improve(
         if rejected:
             _log.warning("Scope filter rejected %d of %d changes: %s", len(rejected), len(raw_changes), rejected[:3])
         _log.info("Sandbox changes (filtered): %s", result.changed_files)
+
+        # 3b. Ex-ante guards — fast local checks before spending CI minutes.
+        # Guard A: public-symbol preservation. Blocks promotions that remove
+        # exported names still referenced elsewhere (the ce11f1e/c2e3b72
+        # failure mode where goal_harness.py was gutted).
+        syms_ok, syms_msg = _check_public_symbols_preserved(
+            project, sandbox, result.changed_files,
+        )
+        if not syms_ok:
+            result.tests_passed = False
+            result.test_output = syms_msg
+            result.error = "Public-symbol regression — promotion blocked ex-ante"
+            _log.warning("Ex-ante guard blocked promotion: %s", syms_msg)
+            return result
+
+        # Guard B: pytest --collect-only. Catches import errors and test
+        # files written against hallucinated APIs before CI ever runs.
+        collect_ok, collect_msg = _sandbox_collect_only(sandbox)
+        if not collect_ok:
+            result.tests_passed = False
+            result.test_output = collect_msg
+            result.error = "Test collection failed ex-ante — promotion blocked"
+            _log.warning("Ex-ante collect-only guard blocked promotion")
+            return result
 
         # 4. Run focused tests first (related to changed files), then full suite
         focused_tests = _map_changed_to_tests(result.changed_files, sandbox)
