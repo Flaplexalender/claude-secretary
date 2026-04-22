@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 from tempfile import TemporaryDirectory
 
-from src.secretary.monitor import CostMonitor
+from secretary.monitor import CostMonitor
 
 
 @pytest.fixture

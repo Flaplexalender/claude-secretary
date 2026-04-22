@@ -12,7 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch, MagicMock, call
 
-from src.secretary.alerter import Alerter
+from secretary.alerter import Alerter
 
 
 @pytest.fixture

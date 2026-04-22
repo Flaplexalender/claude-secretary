@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from src.secretary.checkpoint import TaskCheckpoint, CheckpointManager
+from secretary.checkpoint import TaskCheckpoint, CheckpointManager
 
 
 @pytest.fixture
