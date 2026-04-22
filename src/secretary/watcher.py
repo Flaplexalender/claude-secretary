@@ -289,6 +289,26 @@ class Watcher:
             run_log_path=config.data_path / "run_log.jsonl",
         )
 
+        # Proxy supervisor: detect + optionally auto-restart copilot-api proxy
+        # between cycles. Addresses WinError 10061 failure mode observed in
+        # run_log across multiple sprints. Defaults to detection-only; set
+        # config.proxy_supervisor.auto_start = true to enable npx subprocess
+        # management (opt-in due to Windows npx fragility).
+        from .proxy_supervisor import ProxySupervisor
+        from .config import _interpolate_env
+        _psc = config.proxy_supervisor
+        self._proxy_supervisor: ProxySupervisor | None = None
+        if _psc.enabled and not dry_run:
+            self._proxy_supervisor = ProxySupervisor(
+                base_url=_interpolate_env(config.anthropic_base_url),
+                auto_start=_psc.auto_start,
+                port=_psc.port,
+                start_timeout_s=_psc.start_timeout_s,
+                restart_cooldown_s=_psc.restart_cooldown_s,
+                health_timeout_s=_psc.health_timeout_s,
+                health_log=self.health_log,
+            )
+
     def _load_dedup_history(self) -> dict[str, int]:
         """Load persistent dedup history from disk."""
         if self._dedup_path.exists():
@@ -1918,6 +1938,21 @@ class Watcher:
             now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
             log.info("Watch run #%d starting at %s", self._runs_completed, now)
 
+            # Proxy health check — catches silent proxy crashes between cycles
+            # that otherwise show up as [WinError 10061] on every task in the
+            # cycle. When auto_start is enabled, also attempts subprocess
+            # restart. Failures are recorded but do NOT abort the cycle — the
+            # watcher's normal retry/error paths will handle downstream calls.
+            if self._proxy_supervisor is not None:
+                try:
+                    if not self._proxy_supervisor.ensure_healthy():
+                        log.warning(
+                            "Proxy not healthy at cycle start — tasks this "
+                            "cycle may fail with connection errors"
+                        )
+                except Exception as _psx:  # defensive: never brick the loop
+                    log.debug("proxy supervisor crashed (non-fatal): %s", _psx)
+
             try:
                 passed, failed, premium_spent, cost_usd = await self._run_cycle(memory)
             except KeyboardInterrupt:
@@ -2053,6 +2088,13 @@ class Watcher:
             if released:
                 log.info("Released %d stale claims", released)
             self._coordinator.deregister()
+
+        # Tear down managed proxy subprocess (no-op if we didn't spawn one)
+        if self._proxy_supervisor is not None:
+            try:
+                self._proxy_supervisor.stop_managed()
+            except Exception as _psx:  # defensive — shutdown path
+                log.debug("proxy supervisor shutdown: %s", _psx)
 
     def _notify_failures(self, failed: int, passed: int) -> None:
         """Draft a failure notification email via Gmail API (no LLM needed)."""

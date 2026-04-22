@@ -261,6 +261,23 @@ class MultiInstanceConfig(BaseModel):
     shared_dir: str = "data/shared"  # Shared coordination directory
 
 
+class ProxySupervisorConfig(BaseModel):
+    """copilot-api proxy supervision settings.
+
+    The supervisor runs a cheap ``GET /v1/models`` health check between
+    watcher cycles. When enabled, it emits ``proxy_supervisor`` events to
+    the HealthLog so the self-improve pipeline can observe silent proxy
+    crashes (WinError 10061 in run_log). When ``auto_start`` is also set,
+    the supervisor will spawn ``npx copilot-api@latest start --port <port>``
+    on demand and restart it after the cooldown.
+    """
+    enabled: bool = True              # Run health checks between cycles (cheap, default ON)
+    auto_start: bool = False          # Spawn + restart npx copilot-api (opt-in; Windows-fragile)
+    port: int = 4141                  # Port to pass to --port when auto-starting
+    start_timeout_s: int = 45         # Max wait for spawned proxy to become healthy
+    restart_cooldown_s: int = 60      # Minimum seconds between restart attempts
+    health_timeout_s: float = 3.0     # urlopen timeout per health probe
+
 class SecretaryConfig(BaseModel):
     """Top-level configuration."""
     data_root: str = "data"
@@ -280,6 +297,7 @@ class SecretaryConfig(BaseModel):
     currency: CurrencyConfig = CurrencyConfig()
     events: EventConfig = EventConfig()
     goals: GoalConfig = GoalConfig()
+    proxy_supervisor: ProxySupervisorConfig = ProxySupervisorConfig()
     mcp_servers: dict[str, dict[str, Any]] = {}
 
     @model_validator(mode="after")
