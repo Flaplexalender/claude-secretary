@@ -39,6 +39,7 @@ from .direct_agent import (
     RunProgress,
     _build_tool_schemas,
     _CATEGORY_KEYWORDS,
+    _clamp_reasoning_effort,
     _execute_tool,
     _openai_stream_call,
     _parse_openai_response,
@@ -359,7 +360,7 @@ async def _query_checkpoint(
     oai_tools: list[dict[str, Any]],
     task: str,
     turn_history_summary: str,
-    reasoning_effort: str = "high",
+    reasoning_effort: str | None = "high",
     max_tokens: int = 16384,
 ) -> dict[str, Any]:
     """Query Opus for a checkpoint review with extended thinking."""
@@ -379,8 +380,12 @@ async def _query_checkpoint(
         "model": model,
         "messages": oai_messages,
         "max_tokens": max_tokens,
-        "reasoning_effort": reasoning_effort,
     }
+    # Only include reasoning_effort when the model supports it.
+    # _clamp_reasoning_effort returns None for models that reject it entirely
+    # (e.g. Haiku 4.5 — HTTP 400 "does not support reasoning effort").
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
     if oai_tools:
         payload["tools"] = oai_tools
 
@@ -576,7 +581,11 @@ async def oracle_run(
                     oai_tools=oai_tools,
                     task=task,
                     turn_history_summary=turn_summary,
-                    reasoning_effort=config.reasoning_effort or "high",
+                    # Clamp per-model: Opus 4.7 only accepts "medium" (HTTP 400 otherwise).
+                    reasoning_effort=_clamp_reasoning_effort(
+                        oracle_config.checkpoint_model,
+                        config.reasoning_effort or "high",
+                    ),
                 )
 
                 checkpoints_used += 1
@@ -705,7 +714,11 @@ async def oracle_run(
                         oai_tools=oai_tools,
                         task=task,
                         turn_history_summary=turn_summary,
-                        reasoning_effort=config.reasoning_effort or "high",
+                        # Clamp per-model: Opus 4.7 only accepts "medium" (HTTP 400 otherwise).
+                        reasoning_effort=_clamp_reasoning_effort(
+                            oracle_config.checkpoint_model,
+                            config.reasoning_effort or "high",
+                        ),
                     )
                     checkpoints_used += 1
                     last_checkpoint_worker_turn = worker_turns
