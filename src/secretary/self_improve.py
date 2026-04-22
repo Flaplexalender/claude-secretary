@@ -1774,12 +1774,18 @@ async def improve(
                     _log.info("Promoted changes committed: %s", commit_hash)
                     # Record baseline metrics for empirical outcome tracking
                     # (SOTA feedback loop: ACE/STOP/Reflexion — measure real impact).
+                    # IMPORTANT: MUST use config.data_path — the other two wiring
+                    # sites (watcher.measure_pending_outcomes, goal_self_improve.
+                    # format_recent_outcomes_for_prompt) both use config.data_path,
+                    # and all three must agree or outcomes get written to one
+                    # location and read from another (silently dropping signal).
+                    # Previous bug: hardcoded project/"data" — diverged from
+                    # config.data_path under --instance flag and whenever CWD
+                    # differed from project root.
                     try:
                         from . import proposal_outcomes
-                        # data_root defaults to project/data; callers that use
-                        # a custom data root will still get a sensible default.
                         proposal_outcomes.record_baseline(
-                            data_root=project / "data",
+                            data_root=config.data_path,
                             proposal_id=commit_hash[:8],
                             commit_hash=commit_hash,
                             task=task,

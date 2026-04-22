@@ -476,3 +476,86 @@ def test_measure_pending_outcomes_excludes_environmental_in_after_window(
     assert outcome["after"]["success_rate"] == 1.0
     # Baseline cps=$0.10, after cps=$0.10 → neutral, ~0% delta
     assert outcome["verdict"] == "neutral"
+
+
+# ── End-to-end wiring: ensure three call sites agree on data_root ─────────
+
+
+def test_end_to_end_wiring_single_data_root(tmp_path: Path) -> None:
+    """Regression test for the three-call-site divergence bug.
+
+    record_baseline (called from self_improve.py after promotion),
+    measure_pending_outcomes (called from watcher._run_cycle), and
+    format_recent_outcomes_for_prompt (called from
+    goal_self_improve._run_failure_analysis) MUST all use the same
+    data_root. Previously self_improve.py hardcoded `project / "data"`
+    while the other two used `config.data_path`, so under --instance
+    or non-project-root CWD, outcomes got written to one file and
+    read from another → ACE feedback loop silently dropped all
+    signal.
+
+    This test exercises the full pipeline against a single data_root
+    and verifies the prompt-injection text reflects the verdict from
+    the measured outcome — proving all three share state.
+    """
+    t_before = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc)
+    baseline = [_entry(ts=t_before, success=True, cost_usd=0.10) for _ in range(15)]
+    _write_run_log(tmp_path, baseline)
+
+    # Call site 1: record_baseline (self_improve.py after git commit)
+    ok = po.record_baseline(
+        tmp_path, proposal_id="abc1234",
+        commit_hash="abc1234deadbeef",
+        task="Improve caching", description="Add LRU cache",
+    )
+    assert ok is True
+
+    # Simulate 15 tasks landing after the promotion with cheaper cost —
+    # should produce an "improvement" verdict.
+    rec = po._read_outcomes(tmp_path)[0]
+    t_after = datetime.fromtimestamp(rec["promoted_at"] + 60, tz=timezone.utc)
+    after_runs = [_entry(ts=t_after, success=True, cost_usd=0.05) for _ in range(15)]
+    _write_run_log(tmp_path, baseline + after_runs)
+
+    # Call site 2: measure_pending_outcomes (watcher._run_cycle)
+    measured = po.measure_pending_outcomes(tmp_path)
+    assert measured == 1
+
+    # Call site 3: format_recent_outcomes_for_prompt (goal_self_improve)
+    md = po.format_recent_outcomes_for_prompt(tmp_path)
+    assert md != ""
+    assert "IMPROVEMENT" in md
+    assert "Add LRU cache" in md
+    # The prompt must report the actual measured delta, not an empty record.
+    assert "cost/success:" in md
+    # With cost halving, cps should drop ~50%. Just verify we see a
+    # negative-cost-delta line (improvement sign convention: negative).
+    assert "-" in md  # some negative delta rendered
+
+
+def test_end_to_end_wiring_fails_on_divergent_data_roots(tmp_path: Path) -> None:
+    """If one call site writes to path A and another reads from path B,
+    the ACE feedback loop produces NO prompt injection. Guards against
+    any future re-introduction of the same class of bug."""
+    path_a = tmp_path / "a"
+    path_b = tmp_path / "b"
+    path_a.mkdir()
+    path_b.mkdir()
+
+    t_before = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc)
+    baseline = [_entry(ts=t_before, success=True, cost_usd=0.10) for _ in range(15)]
+    _write_run_log(path_a, baseline)
+
+    # record_baseline → path_a
+    po.record_baseline(
+        path_a, proposal_id="x", commit_hash="y",
+        task="t", description="diverged-write",
+    )
+    # measure_pending_outcomes → path_b (wrong)
+    assert po.measure_pending_outcomes(path_b) == 0
+    # format_recent_outcomes_for_prompt → path_b (wrong)
+    md = po.format_recent_outcomes_for_prompt(path_b)
+    assert md == ""
+    # The signal exists in path_a but is invisible to path_b — exactly
+    # the class of silent failure the single-source-of-truth fix prevents.
+
