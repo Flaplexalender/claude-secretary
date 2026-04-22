@@ -1441,10 +1441,13 @@ class Watcher:
                                 force_tier=effective_tier,
                                 tools=_effective_tools,
                                 max_turns=12 if task_source in ("goals", "escalation") else None,
-                                # Budget tuning (v3, 2026-04-20): Sonnet analysis tasks consistently
-                                # need 15-25 tool calls (run_python/grep/file_read loops). Default 20
-                                # was too tight — bumped to 35. Goals/escalation keep 75 headroom.
-                                max_tool_calls=75 if task_source in ("goals", "escalation") else 35,
+                                # Budget tuning (v4, 2026-04-22): Empirical run_log analysis of
+                                # 347 campaign tasks: successful P95=40 tool calls, max=53, mean=12.
+                                # Previous ceiling of 35 caused 76 (22%) exhaustions. Raising to 55
+                                # captures the successful distribution (P95 + headroom) without
+                                # inflating well-behaved tasks (mean unchanged). Goals/escalation
+                                # keep 75. See data/run_log.jsonl stats (exhaust_rate: 22%→expected <5%).
+                                max_tool_calls=75 if task_source in ("goals", "escalation") else 55,
                                 _progress=progress,
                                 strategy_library=self._strategy_library,
                             )
