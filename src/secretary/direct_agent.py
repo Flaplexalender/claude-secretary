@@ -30,6 +30,7 @@ from .context_builder import build_identity_prompt, build_skill_context
 from .router import select_model, RoutingDecision
 from .memory import MemoryStore
 from .strategy_library import StrategyLibrary
+from .goal_harness import should_block_goal
 
 log = logging.getLogger(__name__)
 
@@ -867,7 +868,7 @@ async def run(
     hooks: dict | None = None,
     _progress: RunProgress | None = None,
     strategy_library: StrategyLibrary | None = None,
-    max_tool_calls: int = 20,
+    max_tool_calls: int = 50,
 ) -> RunResult:
     """Run a task via direct Anthropic Messages API.
 
@@ -883,7 +884,7 @@ async def run(
         cwd: Working directory (unused in direct mode, kept for API compat).
         _progress: Mutable progress tracker for timeout visibility (watcher reads on cancel).
         hooks: Unused in direct mode, kept for API compat.
-        max_tool_calls: Maximum total tool invocations before aborting (default 20).
+        max_tool_calls: Maximum total tool invocations before aborting (default 50).
     """
     if config is None:
         config = SecretaryConfig.load()

@@ -62,6 +62,7 @@ goals:
     success_criteria: "Secretary generates >50% of executed tasks autonomously (not from static YAML)"
     priority: 2
     status: in-progress
+    depends_on: [self-improvement, self-harness]
     sub_goals:
       - id: event-bus
         description: "Reactive event system — Gmail, Calendar, file change triggers"
@@ -88,6 +89,7 @@ goals:
     success_criteria: "Secretary can take a multi-file task (new module + tests + config), execute it end-to-end in sandbox, pass CI, and auto-promote — without being limited to single-line edits"
     priority: 1
     status: in-progress
+    depends_on: [self-harness]
     sub_goals:
       - id: failure-analysis
         description: "Feed failed eval traces to LLM for targeted prompt/code fixes"
