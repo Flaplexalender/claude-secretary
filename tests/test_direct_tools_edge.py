@@ -259,7 +259,7 @@ def test_registry_unrestricted_and_token(tmp_path: Path):
     reg = build_tool_registry(tmp_path, unrestricted_files=True)
     assert "gmail_search" in reg
     assert "file_read" in reg
-    assert len(reg) == 17  # 10 Google + 7 file
+    assert len(reg) == 18  # 10 Google + 7 file + web_fetch
 
 
 def test_registry_workspace_overrides_unrestricted(tmp_path: Path):

@@ -262,7 +262,7 @@ def test_calendar_create_rejects_equal_times(tmp_path: Path):
 
 def test_file_registry_has_three_tools(tmp_path: Path):
     registry = build_file_registry(tmp_path)
-    assert set(registry.keys()) == {"file_read", "file_write", "file_list", "file_edit", "grep_search", "run_command", "run_python"}
+    assert set(registry.keys()) == {"file_read", "file_write", "file_list", "file_edit", "grep_search", "run_command", "run_python", "web_fetch"}
 
 
 def test_file_registry_tool_structure(tmp_path: Path):
@@ -403,7 +403,7 @@ def test_build_tool_registry_with_workspace_no_token(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     registry = build_tool_registry(tmp_path, workspace_root=workspace)
-    assert set(registry.keys()) == {"file_read", "file_write", "file_list", "file_edit", "grep_search", "run_command", "run_python"}
+    assert set(registry.keys()) == {"file_read", "file_write", "file_list", "file_edit", "grep_search", "run_command", "run_python", "web_fetch"}
 
 
 def test_build_tool_registry_with_workspace_and_token(tmp_path: Path):
@@ -439,7 +439,7 @@ def test_build_file_registry_unrestricted_reads_absolute(tmp_path: Path):
 def test_build_tool_registry_unrestricted_files_no_token(tmp_path: Path):
     """No token + unrestricted_files=True → only file tools."""
     registry = build_tool_registry(tmp_path, unrestricted_files=True)
-    assert set(registry.keys()) == {"file_read", "file_write", "file_list", "file_edit", "grep_search", "run_command", "run_python"}
+    assert set(registry.keys()) == {"file_read", "file_write", "file_list", "file_edit", "grep_search", "run_command", "run_python", "web_fetch"}
 
 
 def test_build_tool_registry_unrestricted_files_with_token(tmp_path: Path):

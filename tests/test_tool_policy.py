@@ -30,7 +30,7 @@ def test_classifications_no_overlap():
 
 
 def test_classifications_cover_all_known_tools():
-    """All 17 known tools are classified."""
+    """All 18 known tools are classified."""
     all_classified = READ_ONLY_TOOLS | WRITE_LOCAL_TOOLS | SEND_TOOLS
     expected = {
         "gmail_search", "gmail_read", "gmail_draft", "gmail_send",
@@ -38,6 +38,7 @@ def test_classifications_cover_all_known_tools():
         "calendar_today", "calendar_list", "calendar_search", "calendar_create",
         "file_read", "file_write", "file_list", "file_edit",
         "grep_search", "run_command", "run_python",
+        "web_fetch",
     }
     assert all_classified == expected
 

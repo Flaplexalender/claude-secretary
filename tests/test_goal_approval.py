@@ -184,11 +184,14 @@ def test_prune_removes_old_decided(state: dict) -> None:
 
 
 def test_prune_keeps_pending(state: dict) -> None:
+    """Fresh pending entries (age < stale_pending_seconds) survive pruning."""
     submit_tasks(state, [{"prompt": "New", "tier": "low"}])
-    state["approval_queue"][0]["submitted"] = time.time() - 30 * 86400  # Very old
+    # Back-date within the stale-pending window so it is not auto-rejected.
+    state["approval_queue"][0]["submitted"] = time.time() - 1 * 86400  # 1 day old
     pruned = prune_old_entries(state, max_age_seconds=7 * 86400)
     assert pruned == 0
     assert len(state["approval_queue"]) == 1
+    assert state["approval_queue"][0]["status"] == "pending"
 
 
 def test_prune_max_entries(state: dict) -> None:
