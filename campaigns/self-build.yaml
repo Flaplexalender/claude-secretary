@@ -10,7 +10,7 @@ tasks:
       Create a prioritized list of the top 3 modules needing better test coverage.
       For the highest-priority gap, write the test file with at least 5 meaningful
       tests. Save to tests/test_<module>.py.
-    tier: medium
+    tier: low  # Sprint v1-v3 evidence: Sonnet+high 2% success on recon; Haiku 95%.
     schedule: "weekdays"
 
   - prompt: >
@@ -19,7 +19,7 @@ tasks:
       found, analyze the root cause and propose a fix. If the fix is straightforward
       (< 20 lines changed), implement it directly in src/secretary/. Run the
       relevant tests to verify the fix works.
-    tier: medium
+    tier: low  # recon → Haiku
 
   - prompt: >
       Research the current state of the goal system. Read goals.yaml and
@@ -28,7 +28,7 @@ tasks:
       analyze why it's stuck and either: (a) break it into smaller steps,
       (b) mark it as blocked with evidence, or (c) implement the next concrete
       step to advance it.
-    tier: medium
+    tier: low  # recon → Haiku
     schedule: "weekdays"
 
   - prompt: >
