@@ -16,6 +16,24 @@
 # Human-authored, version-controlled. Machine state lives in data/goal_state.json.
 
 goals:
+  - id: test-baseline-health
+    description: "PRIORITY 0: Diagnose and fix broken test suite that is blocking 5+ goals"
+    success_criteria: "pytest baseline passes 100% of tests; no 'Pre-test baseline FAILED' errors; CI green"
+    priority: 1
+    status: in-progress
+    sub_goals:
+      - id: diagnose-baseline-failure
+        description: "Run full pytest with verbose output to identify root cause of baseline failures"
+        status: in-progress
+      - id: fix-broken-tests
+        description: "Fix identified test failures (likely: imports, fixtures, or API mismatches)"
+        status: not-started
+        depends_on: [diagnose-baseline-failure]
+      - id: pre-flight-validation
+        description: "Implement validate_baseline_health() in goal_harness.py; call before task dispatch"
+        status: not-started
+        depends_on: [fix-broken-tests]
+
   - id: perf-cost-balance
     description: "Standing objective: improve build effectiveness and cost-per-task without regressing performance. Runs alongside every other goal."
     success_criteria: "Rolling 7-day avg cost-per-successful-task trends down OR rolling success-rate trends up, with neither metric regressing more than 2% week-over-week. Never 'done' — re-evaluated every cycle."
@@ -62,7 +80,7 @@ goals:
     success_criteria: "Secretary generates >50% of executed tasks autonomously (not from static YAML)"
     priority: 2
     status: in-progress
-    depends_on: [self-improvement, self-harness]
+    depends_on: [test-baseline-health, self-improvement, self-harness]
     sub_goals:
       - id: event-bus
         description: "Reactive event system — Gmail, Calendar, file change triggers"
@@ -89,7 +107,7 @@ goals:
     success_criteria: "Secretary can take a multi-file task (new module + tests + config), execute it end-to-end in sandbox, pass CI, and auto-promote — without being limited to single-line edits"
     priority: 1
     status: in-progress
-    depends_on: [self-harness]
+    depends_on: [test-baseline-health]
     sub_goals:
       - id: failure-analysis
         description: "Feed failed eval traces to LLM for targeted prompt/code fixes"
@@ -98,7 +116,7 @@ goals:
       - id: wide-scope
         description: "Self-improve agent can write to src/, tests/, goals.yaml, campaigns/ — not just src/secretary/"
         status: done
-        evidence: "write_scope=None, _filter_allowed_changes allows src/secretary/, tests/, campaigns/, workspace/, goals.yaml, campaign.yaml. Commits be16235+6e8d161."
+        evidence: "write_scope=None, _filter_allowed_changes allows src/secretary/, tests/, campaigns/, workspace/, goals.yaml. Commits be16235+6e8d161."
         done_criteria: "write_scope and _filter_allowed_changes allow tests/ and config files; agent prompt removes ONE-change constraint"
       - id: multi-file-scaffolding
         description: "Agent can create new modules with matching test files in a single run"
@@ -121,6 +139,7 @@ goals:
     success_criteria: "Secretary generates pytest tests from goal descriptions, runs them in sandbox, and uses results as verification signals — closing the loop between goals and ground-truth validation"
     priority: 2
     status: in-progress
+    depends_on: [test-baseline-health]
     sub_goals:
       - id: harness-generation
         description: "LLM generates pytest code from goal success criteria"
@@ -180,6 +199,7 @@ goals:
     success_criteria: "At least one stretch feature shipped and working"
     priority: 5
     status: not-started
+    depends_on: [test-baseline-health]
     sub_goals:
       - id: web-dashboard
         description: "Web UI for monitoring secretary status, logs, and metrics"
@@ -196,6 +216,7 @@ goals:
     success_criteria: "Local web app at http://localhost:<port> shows: current run/task, goals + progress, proposals + approvals, recent runs, live cost tracker, and lets Alexander approve/reject/pause without CLI"
     priority: 2
     status: in-progress
+    depends_on: [test-baseline-health]
     sub_goals:
       - id: dashboard-scaffold
         description: "Flask app in src/secretary/web_dashboard.py serves heartbeat + metrics + recent tasks + task detail APIs"
