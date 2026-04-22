@@ -48,6 +48,21 @@ Next lever candidate: fix broken master tests that block self-improve pre-test b
 - Goal state: `data/goal_state.json` — schema is `{last_reviewed, sub_goal_status, progress_notes, total_cycles, meta_reflections}`; keep flat
 - Sprint reports: `data/sprint-v*-report.md`
 - Self-improve pipeline: `src/secretary/self_improve.py` (uses CI, NOT local tests)
+- Proposal outcome feedback loop: `src/secretary/proposal_outcomes.py` + wire-ins in `self_improve.py` (promotion → baseline) and `watcher.py` (per-cycle measure) and `goal_self_improve.py` (prompt injection). Data: `data/proposal_outcomes.jsonl`.
+
+## SOTA alignment (2026-04 audit)
+
+Secretary is aligned with 2026 self-improving scaffolding SOTA. Verified:
+
+- **Voyager-style skill library**: `strategy_library.py` + live JSON at `data/strategy_library.json`. Extracted on task success (`watcher.py` L1503), scored on outcome, retrieved by category into system prompt (`direct_agent.py` L507, `oracle.py` L151). Top strategy currently 684 uses, 38% success. **Fully wired — not a gap.**
+- **Reflexion-style verbal feedback**: `goal_self_improve.py` `_build_analysis_prompt` surfaces prior proposal successes/failures + test-failure output. **Fully wired.**
+- **STOP-like sandbox+test gate**: `self_improve.py` sandbox → tests → promote → post-promote regression verify → rollback on failure. **Fully wired.**
+- **ACE/empirical feedback on self-improve proposals** (THE gap closed in commit after this): `proposal_outcomes.py` measures real cost-per-success delta over N tasks after promotion; feeds verdicts back into next Haiku analysis via `format_recent_outcomes_for_prompt`. This closes the "tests-passing ≠ metric-improving" blind spot.
+
+Remaining SOTA bets (future work, not gaps today):
+
+- **Alita-G-style tool synthesis**: auto-generate new `run_*` tools from recurring successful trajectories. Large effort; skill library already captures the prompt-level analog.
+- **Multi-agent reflection synthesis**: generative-agents-style cross-agent memory. Lower priority — single-agent Reflexion already productive.
 
 ## Session end checklist
 

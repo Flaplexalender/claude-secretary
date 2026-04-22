@@ -657,6 +657,18 @@ async def _run_failure_analysis(
 
     prompt = _build_analysis_prompt(failures, previous_proposals, health_events)
 
+    # Inject empirical outcomes of past promoted proposals so the LLM
+    # considers real metric impact, not just tests-passing success.
+    try:
+        from . import proposal_outcomes
+        outcomes_block = proposal_outcomes.format_recent_outcomes_for_prompt(
+            config.data_path, max_n=5
+        )
+        if outcomes_block:
+            prompt = outcomes_block + "\n" + prompt
+    except Exception as _po_err:
+        log.debug("proposal_outcomes prompt injection skipped: %s", _po_err)
+
     from .config import _interpolate_env
     base_url = _interpolate_env(config.anthropic_base_url).rstrip("/")
     client = anthropic.AsyncAnthropic(

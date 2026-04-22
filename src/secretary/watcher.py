@@ -1915,6 +1915,16 @@ class Watcher:
                         log.info("Strategy library: pruned %d stale strategies", pruned)
                 except Exception as _cons_err:
                     log.debug("Strategy consolidation skipped: %s", _cons_err)
+            # Proposal outcome measurement: empirical feedback loop for
+            # self-improve proposals — fills in outcomes for any past
+            # promoted proposals that now have ≥N tasks after them.
+            try:
+                from . import proposal_outcomes
+                measured = proposal_outcomes.measure_pending_outcomes(self.config.data_path)
+                if measured:
+                    log.info("Proposal outcomes: %d new outcome(s) measured", measured)
+            except Exception as _po_err:
+                log.debug("Proposal outcome measurement skipped: %s", _po_err)
             memory.save()
 
             # Persist dedup history

@@ -1585,6 +1585,21 @@ async def improve(
                 if commit_hash:
                     result.promoted = True
                     _log.info("Promoted changes committed: %s", commit_hash)
+                    # Record baseline metrics for empirical outcome tracking
+                    # (SOTA feedback loop: ACE/STOP/Reflexion — measure real impact).
+                    try:
+                        from . import proposal_outcomes
+                        # data_root defaults to project/data; callers that use
+                        # a custom data root will still get a sensible default.
+                        proposal_outcomes.record_baseline(
+                            data_root=project / "data",
+                            proposal_id=commit_hash[:8],
+                            commit_hash=commit_hash,
+                            task=task,
+                            description=description,
+                        )
+                    except Exception as _po_err:
+                        _log.debug("proposal_outcomes baseline skipped: %s", _po_err)
                 else:
                     # Git failed — rollback to keep repo clean
                     _log.warning("Git commit failed — rolling back promoted changes")
