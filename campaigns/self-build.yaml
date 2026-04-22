@@ -10,6 +10,17 @@ tasks:
       Create a prioritized list of the top 3 modules needing better test coverage.
       For the highest-priority gap, write the test file with at least 5 meaningful
       tests. Save to tests/test_<module>.py.
+
+      CRITICAL — DO NOT HALLUCINATE APIs. Before writing ANY test:
+      (1) file_read the entire target module source from src/secretary/<module>.py
+      (2) list every public class / function and its EXACT signature (positional
+          args, keyword-only args, defaults, return type)
+      (3) only then write tests that call those signatures verbatim
+      (4) run `python -m pytest tests/test_<module>.py --collect-only` to verify
+          the file imports cleanly before declaring done
+      Tests against guessed/invented APIs (wrong kwargs, nonexistent methods,
+      wrong positional order) will be reverted and logged as a regression —
+      see commits ce11f1e / 392f0fb for a real example of this failure.
     tier: low  # Sprint v1-v3 evidence: Sonnet+high 2% success on recon; Haiku 95%.
     schedule: "weekdays"
 
