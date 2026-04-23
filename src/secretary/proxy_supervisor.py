@@ -89,6 +89,23 @@ class SupervisorStats:
     last_restart_at: float = 0.0
     managed_pid: int | None = None
 
+    def as_dict(self) -> dict:
+        """Return a JSON-serialisable snapshot of the counters.
+
+        Used by the watcher heartbeat to surface proxy health to
+        operators without coupling them to the dataclass type.
+        """
+        return {
+            "checks_total": self.checks_total,
+            "checks_healthy": self.checks_healthy,
+            "restart_attempts": self.restart_attempts,
+            "restart_successes": self.restart_successes,
+            "restart_failures": self.restart_failures,
+            "last_healthy_at": self.last_healthy_at,
+            "last_restart_at": self.last_restart_at,
+            "managed_pid": self.managed_pid,
+        }
+
 
 @dataclass
 class ProxySupervisor:

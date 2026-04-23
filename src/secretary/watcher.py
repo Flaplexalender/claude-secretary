@@ -486,6 +486,16 @@ class Watcher:
                 "by_source": by_source,
                 "autonomous_ratio": autonomous_ratio,
             }
+            # Surface proxy supervisor health so operators can see whether
+            # the copilot-api proxy is up, how often it's had to be
+            # restarted, and whether we're currently managing the child
+            # process ourselves.  Missing/disabled supervisor → omit key.
+            sup = getattr(self, "_proxy_supervisor", None)
+            if sup is not None:
+                try:
+                    heartbeat["proxy_supervisor"] = sup.stats.as_dict()
+                except Exception as e:  # noqa: BLE001
+                    log.debug("proxy stats serialisation failed: %s", e)
             hb_path = self.config.data_path / "heartbeat.json"
             hb_path.parent.mkdir(parents=True, exist_ok=True)
             hb_path.write_text(json_mod.dumps(heartbeat, indent=2), encoding="utf-8")

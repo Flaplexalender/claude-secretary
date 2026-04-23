@@ -252,3 +252,35 @@ class TestProxySupervisorHealthLog:
                    return_value=False):
             # Must not raise
             assert sup.ensure_healthy() is False
+
+# ---------------------------------------------------------------------------
+# SupervisorStats.as_dict
+# ---------------------------------------------------------------------------
+
+class TestSupervisorStatsAsDict:
+    def test_default_values_serialisable(self):
+        d = SupervisorStats().as_dict()
+        assert d == {
+            "checks_total": 0,
+            "checks_healthy": 0,
+            "restart_attempts": 0,
+            "restart_successes": 0,
+            "restart_failures": 0,
+            "last_healthy_at": 0.0,
+            "last_restart_at": 0.0,
+            "managed_pid": None,
+        }
+
+    def test_captures_live_counters(self):
+        s = SupervisorStats(
+            checks_total=10, checks_healthy=9,
+            restart_attempts=2, restart_successes=1, restart_failures=1,
+            last_healthy_at=123.0, last_restart_at=110.0, managed_pid=4321,
+        )
+        d = s.as_dict()
+        assert d["checks_total"] == 10
+        assert d["managed_pid"] == 4321
+        assert d["restart_successes"] == 1
+        # round-trip through json to prove serialisability
+        import json
+        json.dumps(d)
