@@ -2,7 +2,21 @@
 
 Read this before working on this repo. It is short on purpose.
 
-## Prime directive
+## Prime directives
+
+Two co-equal directives. Every change must serve both.
+
+### 1. Be Alexander's actual secretary
+
+**This is a real secretary for a real person, not a benchmark.** The end state is that Alexander hands off inbox triage, calendar management, returns/logistics, school admin, bill tracking, appointment follow-up — and the secretary just handles it. If a session ever ends with a shiny self-improvement win but zero real-world tasks done for Alexander, that is a regression, not progress.
+
+Concrete implications:
+- Real-world surface area (Gmail, Calendar, Tasks, school portals, carrier APIs, bank statements, messaging) is the product. The self-improve loop exists to make that surface area work reliably on its own.
+- When adding features, prefer "Alexander can now delegate X to the secretary" over "the secretary's internal metric improved." Both matter; the first is the point.
+- Usefulness is measured in Alexander's shorthand: *"I asked the secretary to do X and it did X."* Dashboards, metrics, and loops are scaffolding around that.
+- Example tasks the secretary should eventually handle end-to-end without a nudge: reschedule a missed Dragonfly pickup, file a CAL reimbursement, remind about fee deadlines, draft replies to Rita, flag tutor invoices, keep the summer-2026 course files in sync.
+
+### 2. Prime directive: improve perf-per-cost with zero regression
 
 **Improve build effectiveness, performance-per-cost, and cost-per-task with zero or near-zero performance regression — while building any other feature.** This runs alongside everything. It is never "done". Each change must answer: *did this raise cost without raising performance? did this lower performance without lowering cost more?* Reject changes that regress performance unless offset by a larger cost drop.
 
